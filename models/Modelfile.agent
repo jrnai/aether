@@ -1,0 +1,8 @@
+# Project Aether - Specialized Agentic & Tool Calling Model (RTX 5060 Optimized)
+FROM qwen2.5:7b-instruct
+
+# 16,384 token context window for MCP tool outputs and multi-turn conversations
+PARAMETER num_ctx 16384
+PARAMETER temperature 0.1
+PARAMETER stop "<|im_end|>"
+PARAMETER stop "<|endoftext|>"

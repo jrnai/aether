@@ -1,0 +1,673 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="Project Aether - Privacy-First Local Desktop Automation Dashboard">
+  <title>Project Aether — Desktop Intelligence</title>
+  <link rel="icon" type="image/x-icon" href="/favicon.ico">
+  <link rel="shortcut icon" type="image/x-icon" href="/favicon.ico">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Outfit:wght@500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/static/style.css?v=22">
+</head>
+<body>
+  <div class="app-layout">
+    <!-- Sidebar Navigation -->
+    <aside class="sidebar" id="app-sidebar">
+      <div class="brand">
+        <div class="brand-badge" onclick="toggleSidebar()" title="Toggle Sidebar" style="cursor: pointer;">
+          <span class="pulse-dot"></span>
+        </div>
+        <div class="brand-text">
+          <h1>AETHER</h1>
+          <span class="brand-sub">Desktop Intelligence</span>
+        </div>
+        <button id="sidebar-collapse-btn" class="sidebar-toggle-btn" onclick="toggleSidebar()" title="Collapse Sidebar (Ctrl+B)">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <polyline points="15 18 9 12 15 6"></polyline>
+          </svg>
+        </button>
+      </div>
+
+      <nav class="nav-menu" role="navigation">
+        <button id="nav-overview" class="nav-item active" onclick="switchTab('overview')" data-tooltip="Overview" title="Overview">
+          <span class="nav-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="9" rx="1"></rect><rect x="14" y="3" width="7" height="5" rx="1"></rect><rect x="14" y="12" width="7" height="9" rx="1"></rect><rect x="3" y="16" width="7" height="5" rx="1"></rect></svg>
+          </span>
+          <span>Overview</span>
+        </button>
+        <button id="nav-calendar" class="nav-item" onclick="switchTab('calendar')" data-tooltip="Calendar & Focus" title="Calendar & Focus">
+          <span class="nav-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line></svg>
+          </span>
+          <span>Calendar & Focus</span>
+        </button>
+        <button id="nav-inbox" class="nav-item" onclick="switchTab('inbox')" data-tooltip="Inbox Triage" title="Inbox Triage">
+          <span class="nav-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"></path><polyline points="22,6 12,13 2,6"></polyline></svg>
+          </span>
+          <span>Inbox Triage</span>
+          <span id="badge-unread" class="count-pill">0</span>
+        </button>
+        <button id="nav-tasks" class="nav-item" onclick="switchTab('tasks')" data-tooltip="Tasks (Obsidian)" title="Tasks (Obsidian)">
+          <span class="nav-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 11 12 14 22 4"></polyline><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"></path></svg>
+          </span>
+          <span>Tasks (Obsidian)</span>
+          <span id="badge-tasks" class="count-pill">0</span>
+        </button>
+        <button id="nav-news" class="nav-item" onclick="switchTab('news')" data-tooltip="Tech & AI News" title="Tech & AI News">
+          <span class="nav-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 22h16a2 2 0 0 0 2-2V4a2 2 0 0 0-2-2H8a2 2 0 0 0-2 2v16a2 2 0 0 1-2 2Zm0 0a2 2 0 0 1-2-2v-9c0-1.1.9-2 2-2h2"></path><path d="M18 14h-8"></path><path d="M15 18h-5"></path><path d="M10 6h8v4h-8V6Z"></path></svg>
+          </span>
+          <span>Tech & AI News</span>
+        </button>
+        <button id="nav-files" class="nav-item" onclick="switchTab('files')" data-tooltip="Code & Files" title="Code & Files">
+          <span class="nav-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="16 18 22 12 16 6"></polyline><polyline points="8 6 2 12 8 18"></polyline></svg>
+          </span>
+          <span>Code & Files</span>
+        </button>
+        <button id="nav-chat" class="nav-item" onclick="switchTab('chat')" data-tooltip="AI Assistant" title="AI Assistant">
+          <span class="nav-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>
+          </span>
+          <span>AI Assistant</span>
+        </button>
+      </nav>
+
+      <div class="system-status-box">
+        <div class="status-header">System Health</div>
+        <div class="status-indicator">
+          <span id="ollama-dot" class="dot dot-green"></span>
+          <span id="ollama-status-text">Ollama (Active)</span>
+        </div>
+        <div class="status-indicator">
+          <span id="net-dot" class="dot dot-green"></span>
+          <span id="net-status-text">Internet (Connected)</span>
+        </div>
+        <div class="status-indicator">
+          <span id="search-dot" class="dot dot-green"></span>
+          <span id="search-status-text">Web Search (DuckDuckGo)</span>
+        </div>
+        <div class="status-indicator">
+          <span id="cal-dot" class="dot dot-green"></span>
+          <span id="cal-status-text">Google Calendar</span>
+        </div>
+        <div class="status-indicator">
+          <span id="mail-dot" class="dot dot-green"></span>
+          <span id="mail-status-text">Gmail (IMAP/SMTP)</span>
+        </div>
+      </div>
+    </aside>
+
+    <!-- Main Content Area -->
+    <main class="main-content">
+      <!-- Top Bar -->
+      <header class="top-bar">
+        <div class="top-left-group">
+          <div class="time-widget">
+            <span id="header-weekday" class="header-weekday">Saturday</span>
+            <span id="header-date" class="header-date">September 5, 2026</span>
+          </div>
+        </div>
+        <div class="top-actions">
+          <div id="top-net-badge" class="connection-badge-box" title="Internet Connectivity Health">
+            <span id="top-net-dot" class="dot dot-green"></span>
+            <span id="top-net-text">Internet (Connected)</span>
+          </div>
+          <div class="model-badge-box">
+            <select id="model-select" class="model-select" onchange="changeActiveModel(this.value)" title="Switch Active Ollama Model or Unified Mode">
+              <option value="auto">Auto-Route (RTX 5060)</option>
+              <option value="qwen2.5:7b-instruct">qwen2.5:7b-instruct [Unified Default]</option>
+              <option value="qwen2.5vl:7b">qwen2.5vl:7b [Multimodal Vision]</option>
+              <option value="qwen2.5-coder:7b">qwen2.5-coder:7b [Coding Specialist]</option>
+              <option value="deepseek-r1:7b">deepseek-r1:7b [Deep Reasoning]</option>
+            </select>
+          </div>
+          <button id="btn-refresh" class="btn-secondary" onclick="refreshAllData()" title="Refresh All Data: Metrics, Calendar, Emails, Tasks, and Files">
+            <span class="refresh-icon">↻</span>
+            <span id="btn-refresh-text">Refresh</span>
+          </button>
+        </div>
+      </header>
+
+      <!-- TAB 1: OVERVIEW -->
+      <section id="tab-overview" class="tab-panel active">
+        <!-- Metric Cards -->
+        <div class="stats-row">
+          <div class="stat-card">
+            <span class="stat-label">TODAY'S SCHEDULE</span>
+            <div id="stat-events-count" class="stat-value">0</div>
+            <span class="stat-meta">Upcoming meetings</span>
+          </div>
+          <div class="stat-card">
+            <span class="stat-label">FOCUS WINDOWS</span>
+            <div id="stat-free-count" class="stat-value">0</div>
+            <span class="stat-meta">Uninterrupted gaps</span>
+          </div>
+          <div class="stat-card">
+            <span class="stat-label">UNREAD EMAILS</span>
+            <div id="stat-email-count" class="stat-value">0</div>
+            <span class="stat-meta">In Gmail inbox</span>
+          </div>
+          <div class="stat-card">
+            <span class="stat-label">PENDING TASKS</span>
+            <div id="stat-tasks-count" class="stat-value">0</div>
+            <span class="stat-meta">In Obsidian vault</span>
+          </div>
+        </div>
+
+        <div class="grid-2col">
+          <!-- Morning Briefing Card -->
+          <div class="card glass-card">
+            <div class="card-header">
+              <h2>Today's Morning Briefing</h2>
+              <div class="header-actions">
+                <button id="btn-regenerate-briefing" class="btn-primary-sm" onclick="regenerateBriefing()" title="Regenerate today's morning briefing with local AI">
+                  <span id="briefing-btn-text">Regenerate Briefing</span>
+                </button>
+                <button class="btn-subtle" onclick="copyBriefing()" title="Copy briefing text">Copy</button>
+              </div>
+            </div>
+            <div id="briefing-content" class="briefing-body">
+              <div class="loading-spinner">Loading briefing...</div>
+            </div>
+          </div>
+
+          <!-- Schedule & Actions Column -->
+          <div class="column-stack">
+            <div class="card glass-card">
+              <div class="card-header">
+                <h2>Free Focus Windows</h2>
+              </div>
+              <div id="overview-free-slots" class="slots-list">
+                <div class="empty-state">Scanning free time...</div>
+              </div>
+            </div>
+
+            <div class="card glass-card">
+              <div class="card-header">
+                <h2>Quick Tasks</h2>
+              </div>
+              <div class="quick-add-box">
+                <input type="text" id="quick-task-input" placeholder="Add a quick task..." onkeydown="if(event.key==='Enter') quickAddTask()">
+                <select id="quick-task-priority-input" class="input-select priority-select quick-priority-select" title="Set task priority">
+                  <option value="normal" selected>Normal</option>
+                  <option value="important">Important</option>
+                  <option value="urgent">Urgent</option>
+                </select>
+                <button class="btn-primary" onclick="quickAddTask()">Add</button>
+              </div>
+              <div id="overview-tasks-list" class="task-checklist">
+                <!-- Mini task list -->
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Tech & AI Intelligence Briefing Preview on Overview -->
+        <div class="card glass-card" style="margin-top: 1.5rem;">
+          <div class="card-header" style="flex-wrap: wrap; gap: 0.75rem;">
+            <div style="display: flex; align-items: center; gap: 0.75rem;">
+              <div class="digest-icon-badge">
+                <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
+              </div>
+              <div>
+                <h2>AI Student & Developer Intelligence</h2>
+                <span style="font-size: 0.8rem; color: var(--text-dim);">Daily Model Releases, Tools & Research Takeaways</span>
+              </div>
+            </div>
+            <button class="btn-primary-sm" onclick="switchTab('news')">Open Full News Feed ➔</button>
+          </div>
+          <div id="overview-digest-takeaway" class="digest-takeaway-box" style="margin: 1rem 0 0 0;">
+            <div class="digest-takeaway-label">Today's Focus</div>
+            <div id="overview-digest-takeaway-text">Loading today's AI student briefing...</div>
+          </div>
+        </div>
+      </section>
+
+      <!-- TAB: TECH & AI NEWS INTELLIGENCE -->
+      <section id="tab-news" class="tab-panel">
+        <!-- AI Student & Developer Digest Banner -->
+        <div id="ai-student-digest-banner" class="ai-digest-banner">
+          <div class="digest-header">
+            <div class="digest-title-group">
+              <div class="digest-icon-badge">
+                <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
+              </div>
+              <div>
+                <div class="digest-tag">AI Student & Developer Intelligence</div>
+                <h3 id="digest-headline" class="digest-headline">Today's AI Models & Tooling Briefing</h3>
+              </div>
+            </div>
+            <div class="digest-actions">
+              <span id="digest-updated-at" class="digest-time">Updated today</span>
+              <button id="btn-refresh-digest" class="btn-primary-sm" onclick="refreshAiDigest()" title="Regenerate briefing using local Ollama model">
+                <span id="digest-refresh-icon" class="refresh-icon">↻</span> Regenerate AI Briefing
+              </button>
+            </div>
+          </div>
+          <div id="digest-takeaway" class="digest-takeaway-box">
+            <div class="digest-takeaway-label">Executive Takeaway</div>
+            <div id="digest-takeaway-text">Loading today's AI student briefing...</div>
+          </div>
+          <div class="digest-grid">
+            <div class="digest-col">
+              <div class="digest-col-title models">Models & Research</div>
+              <div id="digest-models-list">
+                <div class="loading-spinner" style="font-size:0.8rem; padding:0.5rem 0;">Analyzing models...</div>
+              </div>
+            </div>
+            <div class="digest-col">
+              <div class="digest-col-title tools">Developer Tools & SDKs</div>
+              <div id="digest-tools-list">
+                <div class="loading-spinner" style="font-size:0.8rem; padding:0.5rem 0;">Analyzing tooling...</div>
+              </div>
+            </div>
+            <div class="digest-col">
+              <div class="digest-col-title project">Student Project Takeaway</div>
+              <div id="digest-project-idea">
+                <div class="loading-spinner" style="font-size:0.8rem; padding:0.5rem 0;">Synthesizing project...</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Tech Intelligence & Live Headlines Card -->
+        <div class="card glass-card news-card-section">
+          <div class="card-header" style="flex-wrap: wrap; gap: 0.75rem;">
+            <div style="display: flex; align-items: center; gap: 0.75rem;">
+              <h2>Live Tech & AI Feed</h2>
+              <span id="news-badge-count" class="badge badge-emerald">Live Feed</span>
+              <span id="news-updated-time" style="font-size: 0.8rem; color: var(--text-dim);">Updated recently</span>
+            </div>
+            <div class="header-actions" style="display: flex; align-items: center; gap: 0.6rem; flex-wrap: wrap;">
+              <div class="news-filter-group" style="display: flex; gap: 0.35rem; flex-wrap: wrap;">
+                <button class="btn-chip active" id="news-chip-all" onclick="setNewsFilter('all')">All</button>
+                <button class="btn-chip" id="news-chip-ai" onclick="setNewsFilter('ai_ml')">AI & ML</button>
+                <button class="btn-chip" id="news-chip-tools" onclick="setNewsFilter('dev_tools')">Tools</button>
+                <button class="btn-chip" id="news-chip-hn" onclick="setNewsFilter('Hacker News')">Hacker News</button>
+                <button class="btn-chip" id="news-chip-gn" onclick="setNewsFilter('Google News')">Google News</button>
+                <button class="btn-chip" id="news-chip-tc" onclick="setNewsFilter('TechCrunch AI')">TechCrunch</button>
+              </div>
+              <button id="btn-refresh-news" class="btn-subtle" onclick="fetchNews(true)" title="Fetch latest tech news">
+                <span class="refresh-icon">↻</span> Sync Feed
+              </button>
+            </div>
+          </div>
+          <div id="news-headlines-container" class="news-headlines-grid">
+            <div class="loading-spinner">Loading tech headlines...</div>
+          </div>
+        </div>
+      </section>
+
+      <!-- TAB 2: CALENDAR & FOCUS -->
+      <section id="tab-calendar" class="tab-panel">
+        <div class="card glass-card">
+          <div class="card-header">
+            <h2>Google Calendar Events</h2>
+            <span id="cal-sync-badge" class="badge badge-success">2-Way Sync Active</span>
+          </div>
+          <div id="calendar-events-table" class="events-container">
+            <div class="loading-spinner">Loading events...</div>
+          </div>
+        </div>
+
+        <div class="card glass-card" style="margin-top: 1.5rem;">
+          <div class="card-header">
+            <h2>Focus Opportunities</h2>
+          </div>
+          <div id="full-free-slots" class="slots-list">
+            <!-- Free slots -->
+          </div>
+        </div>
+      </section>
+
+      <!-- TAB 3: INBOX TRIAGE -->
+      <section id="tab-inbox" class="tab-panel">
+        <div class="card glass-card">
+          <div class="card-header" style="flex-wrap: wrap; gap: 1rem;">
+            <div>
+              <h2>Email Inbox & Triage</h2>
+              <div style="display:flex; gap:0.5rem; margin-top:0.35rem; font-size:0.82rem; color:var(--text-dim);">
+                <span id="email-stat-unread">0 unread</span> •
+                <span id="email-stat-starred">0 starred</span> •
+                <span id="email-stat-pinned">0 pinned</span> •
+                <span id="email-stat-total">0 total</span>
+              </div>
+            </div>
+            <div style="display:flex; align-items:center; gap:0.6rem;">
+              <button id="btn-sync-emails" class="btn-secondary" onclick="fetchEmails(true)" title="Sync latest emails from IMAP / Outlook">
+                <span id="sync-emails-icon"></span> Sync Live
+              </button>
+              <span class="badge badge-indigo">IMAP SSL + Graph</span>
+            </div>
+          </div>
+
+          <!-- Email Filter Bar -->
+          <div class="email-toolbar">
+            <!-- Status & Flag Filters -->
+            <div class="email-filter-group" id="email-status-filters">
+              <button id="email-filter-all" class="btn-chip" onclick="filterEmailsStatus('all')">All</button>
+              <button id="email-filter-unread" class="btn-chip active" onclick="filterEmailsStatus('unread')">Unread</button>
+              <button id="email-filter-read" class="btn-chip" onclick="filterEmailsStatus('read')">Read</button>
+              <button id="email-filter-starred" class="btn-chip" onclick="filterEmailsFlag('starred')">Starred</button>
+              <button id="email-filter-pinned" class="btn-chip" onclick="filterEmailsFlag('pinned')">Pinned</button>
+              <button id="email-filter-important" class="btn-chip" onclick="filterEmailsFlag('important')">Important</button>
+            </div>
+
+            <!-- Date Range Filters -->
+            <div class="email-filter-group" id="email-date-filters">
+              <span class="filter-label">Time:</span>
+              <button id="email-days-all" class="btn-chip" onclick="filterEmailsDays('all')">All</button>
+              <button id="email-days-1" class="btn-chip" onclick="filterEmailsDays('1')">1 Day</button>
+              <button id="email-days-5" class="btn-chip" onclick="filterEmailsDays('5')">5 Days</button>
+              <button id="email-days-7" class="btn-chip active" onclick="filterEmailsDays('7')">7 Days</button>
+            </div>
+          </div>
+
+          <!-- Search Bar -->
+          <div class="email-search-bar">
+            <input 
+              type="text" 
+              id="email-search-input" 
+              placeholder="Search emails by sender, subject, or content..." 
+              oninput="onEmailSearch(this.value)"
+            >
+            <button id="btn-clear-email-search" class="btn-secondary" onclick="clearEmailSearch()" style="display:none; padding: 0.4rem 0.6rem;">✕</button>
+          </div>
+
+          <div id="emails-list" class="emails-container">
+            <div class="loading-spinner">Fetching emails...</div>
+          </div>
+        </div>
+      </section>
+
+      <!-- TAB 4: TASKS (OBSIDIAN) -->
+      <section id="tab-tasks" class="tab-panel">
+        <div class="card glass-card">
+          <div class="card-header" style="flex-wrap: wrap; gap: 0.75rem;">
+            <h2>Vault Task Tracker</h2>
+            <div style="display: flex; flex-wrap: wrap; gap: 0.75rem; align-items: center;">
+              <div class="task-filter-btns">
+                <button id="filter-pending" class="btn-chip active" onclick="filterTasks('pending')">Pending</button>
+                <button id="filter-completed" class="btn-chip" onclick="filterTasks('completed')">Completed</button>
+                <button id="filter-all" class="btn-chip" onclick="filterTasks('all')">All</button>
+              </div>
+              <div class="task-priority-filter-btns" style="display: flex; gap: 0.35rem;">
+                <button id="priority-filter-all" class="btn-chip active" onclick="filterPriority('all')">All Priorities</button>
+                <button id="priority-filter-urgent" class="btn-chip" onclick="filterPriority('urgent')">Urgent</button>
+                <button id="priority-filter-important" class="btn-chip" onclick="filterPriority('important')">Important</button>
+                <button id="priority-filter-normal" class="btn-chip" onclick="filterPriority('normal')">Normal</button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Add Task Form -->
+          <div class="task-input-bar">
+            <input type="text" id="task-desc-input" placeholder="Task description (e.g. 'Finish SC3021 Report #study')" class="input-main" onkeydown="if(event.key==='Enter') addNewTask()">
+            <input type="date" id="task-due-input" class="input-date" onkeydown="if(event.key==='Enter') addNewTask()">
+            <select id="task-priority-input" class="input-select priority-select">
+              <option value="normal" selected>Normal Priority</option>
+              <option value="important">Important Priority</option>
+              <option value="urgent">Urgent Priority</option>
+            </select>
+            <button id="btn-add-task" class="btn-primary" onclick="addNewTask()">+ Add Task</button>
+          </div>
+
+          <div id="full-tasks-list" class="task-checklist full-task-list">
+            <div class="loading-spinner">Loading tasks...</div>
+          </div>
+        </div>
+      </section>
+
+      <!-- TAB 5: AI CHAT -->
+      <section id="tab-chat" class="tab-panel">
+        <div class="card glass-card chat-card">
+          <div class="card-header">
+            <h2>Local AI Assistant</h2>
+            <div style="display:flex; align-items:center; gap:0.6rem;">
+              <span id="chat-active-model-badge" class="badge badge-purple" title="Active Model / Routing Strategy">Auto-Route</span>
+              <button id="btn-clear-chat" class="btn-secondary" onclick="clearChatHistory()" title="Clear conversation history">Clear Chat</button>
+              <span class="badge badge-emerald">Privacy-First · Web Enabled</span>
+            </div>
+          </div>
+
+          <div id="chat-messages" class="chat-messages">
+            <div class="chat-bubble ai-bubble">
+              <div class="bubble-sender">AETHER</div>
+              <div class="bubble-text">
+                Hello! I am connected to your local workspace, calendar, email, task vault, and DuckDuckGo web search. How can I assist you today?
+              </div>
+            </div>
+          </div>
+
+          <!-- Staged Images Preview Strip -->
+          <div id="chat-image-preview-bar" class="chat-image-preview-bar" style="display: none;"></div>
+
+          <div class="chat-input-bar">
+            <input type="file" id="chat-file-input" accept="image/*" multiple style="display: none;" onchange="handleImageFileSelect(event)">
+            <button id="btn-attach-image" class="btn-attach" onclick="triggerImageAttachment()" title="Attach image or paste screenshot (Ctrl+V)">
+              <svg class="attach-svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <rect width="18" height="18" x="3" y="3" rx="2" ry="2"/>
+                <circle cx="9" cy="9" r="2"/>
+                <path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"/>
+              </svg>
+            </button>
+            <input type="text" id="chat-input" placeholder="Ask Aether, attach image, or paste screenshot (Ctrl+V)..." onkeydown="if(event.key==='Enter') sendChatMessage()">
+            <button id="btn-send-chat" class="btn-primary" onclick="sendChatMessage()">Send</button>
+          </div>
+        </div>
+      </section>
+
+      <!-- TAB 6: CODE & FILES -->
+      <section id="tab-files" class="tab-panel">
+        <div class="files-workspace-layout">
+          <!-- Left Edge Dock: Shown when File Explorer is collapsed -->
+          <div id="explorer-collapsed-dock" class="studio-edge-dock dock-left" onclick="toggleFileExplorerPanel()" title="Expand File Explorer (Alt+E / Ctrl+Shift+E)">
+            <button class="dock-edge-btn" title="Expand File Explorer (Alt+E)">
+              <span class="dock-arrow">▶</span>
+            </button>
+            <span class="dock-vertical-label">Files</span>
+          </div>
+
+          <!-- Left: File Explorer -->
+          <div class="card glass-card file-explorer-card">
+            <div class="explorer-top-bar">
+              <div class="explorer-title-box" onclick="promptChangeWorkspace()" title="Click to change workspace folder (paste path or open File Explorer)" style="cursor: pointer;">
+                <span class="explorer-title">Workspace</span>
+                <span id="current-workspace-name" class="workspace-badge" title="Click to change folder">aether</span>
+              </div>
+              <button class="icon-btn" onclick="toggleFileExplorerPanel()" title="Collapse File Explorer">◀</button>
+            </div>
+
+            <div class="explorer-action-buttons">
+              <button class="icon-btn" onclick="chooseWorkspaceFolderWithExplorer()" title="Open Folder with Windows File Explorer">Folder</button>
+              <button class="icon-btn" onclick="openFileWithExplorer()" title="Open File with Windows File Explorer">File</button>
+              <button class="icon-btn" onclick="promptNewFile()" title="New File">+File</button>
+              <button class="icon-btn" onclick="promptNewFolder()" title="New Folder">+Dir</button>
+              <button class="icon-btn" onclick="organizeWithFolderPicker()" title="Choose Folder to Organize with File Explorer">Clean</button>
+              <button id="btn-refresh-files" class="icon-btn" onclick="refreshFilesTreeBtn(this)" title="Refresh Workspace Tree">↻</button>
+            </div>
+
+            <div class="explorer-search-box">
+              <input type="text" id="file-search-input" placeholder="Search files or grep..." oninput="onFileSearchInput(this.value)">
+              <button id="btn-toggle-grep" class="chip-toggle" onclick="toggleGrepSearch()" title="Toggle Grep Content Search">Grep</button>
+            </div>
+
+            <div id="file-tree-container" class="file-tree-container">
+              <div class="loading-spinner">Loading files...</div>
+            </div>
+          </div>
+
+          <!-- Center: Code Editor -->
+          <div class="card glass-card code-editor-card">
+            <div class="editor-header-bar">
+              <button id="btn-toggle-explorer-rail" class="editor-rail-btn active" onclick="toggleFileExplorerPanel()" title="Toggle File Explorer (Alt+E / Ctrl+Shift+E)">
+                <span class="rail-label">Files</span>
+              </button>
+              <div class="editor-tabs-bar" id="editor-tabs-bar">
+                <div class="no-tabs-hint">No file open</div>
+              </div>
+              <button id="btn-toggle-terminal-rail" class="editor-rail-btn" onclick="toggleIntegratedTerminal()" title="Toggle Integrated Terminal (Ctrl+`)">
+                <span class="rail-label">Terminal</span>
+              </button>
+            </div>
+
+            <div id="editor-empty-state" class="editor-empty-state">
+              <h3>Aether Code & File Studio</h3>
+              <p>Select any file from the workspace on the left, or open any file or folder from your computer using Windows File Explorer.</p>
+              <div class="empty-actions">
+                <button class="btn-primary-sm" onclick="toggleFileExplorerPanel()" id="btn-empty-toggle-files">Show File Explorer</button>
+                <button class="btn-primary-sm" onclick="chooseWorkspaceFolderWithExplorer()">Choose Folder (Explorer)</button>
+                <button class="btn-primary-sm" onclick="openFileWithExplorer()">Open File (Explorer)</button>
+                <button class="btn-secondary" onclick="toggleIntegratedTerminal(true)">Open Terminal</button>
+                <button class="btn-secondary" onclick="promptChangeWorkspace()">Enter Folder Path</button>
+                <button class="btn-secondary" onclick="promptNewFile()">+ Create New File</button>
+                <button class="btn-secondary" onclick="openFile('config/config.yaml')">Open config.yaml</button>
+                <button class="btn-secondary" onclick="openFile('README.md')">Open README.md</button>
+              </div>
+            </div>
+
+            <div id="editor-main-area" class="editor-main-area" style="display: none;">
+              <div class="editor-toolbar">
+                <div class="editor-file-info">
+                  <button id="btn-expand-explorer" class="icon-btn" onclick="toggleFileExplorerPanel()" title="Show File Explorer" style="display:none;">Tree</button>
+                  <span id="editor-file-path" class="editor-path-badge">src/main.py</span>
+                  <span id="editor-file-lang" class="editor-lang-badge">Python</span>
+                  <span id="editor-file-meta" class="editor-meta-text">0 lines</span>
+                </div>
+                <div class="editor-toolbar-actions">
+                  <button id="btn-run-file" class="btn-primary-sm" onclick="runActiveFile()" title="Run active file in integrated terminal (F5)">Run File</button>
+                  <button id="btn-save-file" class="btn-secondary" onclick="saveActiveFile()">Save <span class="shortcut-tag">Ctrl+S</span></button>
+                  <button id="btn-toggle-terminal" class="btn-secondary" onclick="toggleIntegratedTerminal()" title="Toggle Integrated Terminal (Ctrl+`)">Terminal</button>
+                  <button class="btn-secondary" onclick="revealActiveFileInExplorer()" title="Show in Windows File Explorer">Explorer</button>
+                  <button class="btn-secondary-danger" onclick="deleteActiveFile()" title="Move file to Trash">Delete</button>
+                </div>
+              </div>
+
+              <div class="editor-canvas-wrapper">
+                <div id="editor-line-numbers" class="editor-line-numbers">1</div>
+                <textarea id="code-editor-textarea" class="code-editor-textarea" spellcheck="false" placeholder="Code content..." oninput="onEditorContentChange()" onscroll="syncEditorScroll()" onkeydown="handleEditorKeydown(event)"></textarea>
+              </div>
+
+              <div class="editor-status-bar">
+                <div class="editor-status-left">
+                  <span id="editor-status-indicator" class="status-clean">● Saved</span>
+                  <span id="editor-cursor-pos">Ln 1, Col 1</span>
+                </div>
+                <div class="editor-status-right">
+                  <span id="editor-encoding">UTF-8</span>
+                  <span id="editor-active-model-tag">Model: Active</span>
+                </div>
+              </div>
+            </div>
+
+            <!-- Bottom Docked: Integrated Terminal Panel (VS Code Style) -->
+            <div id="editor-terminal-drawer" class="editor-terminal-drawer" style="display: none;">
+              <div id="terminal-resize-handle" class="terminal-resize-handle" title="Drag vertically to adjust terminal height (Double-click to expand/collapse)"></div>
+              <div class="terminal-header-bar">
+                <div class="terminal-title-group">
+                  <span class="terminal-title-badge">TERMINAL</span>
+                  <span id="terminal-workspace-tag" class="terminal-workspace-tag" title="Working directory">workspace</span>
+                  <span id="terminal-status-indicator" class="terminal-status-indicator ready">READY</span>
+                </div>
+                <div class="terminal-header-actions">
+                  <button id="btn-terminal-stop" class="terminal-header-btn danger" onclick="cancelTerminalCommand()" title="Stop running process" style="display: none;">Stop</button>
+                  <button id="btn-terminal-clear" class="terminal-header-btn" onclick="clearTerminalOutput()" title="Clear terminal screen (Ctrl+K)">Clear</button>
+                  <button id="btn-terminal-close" class="terminal-header-btn" onclick="toggleIntegratedTerminal(false)" title="Close Terminal Panel">✕</button>
+                </div>
+              </div>
+              <div id="terminal-output" class="terminal-output">
+                <div class="terminal-line terminal-system-msg">Aether Integrated Terminal [Workspace Shell]</div>
+                <div class="terminal-line terminal-system-msg">Type commands below or click 'Run File' to execute active scripts.</div>
+              </div>
+              <div class="terminal-input-bar">
+                <span class="terminal-prompt-prefix" id="terminal-prompt-prefix">aether&gt;</span>
+                <input
+                  type="text"
+                  id="terminal-input"
+                  class="terminal-input"
+                  placeholder="Type a command (e.g. python main.py, pytest)..."
+                  autocomplete="off"
+                  spellcheck="false"
+                  onkeydown="handleTerminalKeydown(event)"
+                />
+                <button id="btn-terminal-run" class="btn-primary-xs" onclick="submitTerminalCommand()" title="Execute command (Enter)">Run</button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Right: Side AI Coding Agent (Antigravity Style) -->
+          <div class="card glass-card code-agent-card" id="code-agent-card">
+            <!-- Agent Header -->
+            <div class="coder-header">
+              <div class="coder-title-box">
+                <span class="coder-status-dot ready" id="coder-status-dot"></span>
+                <span class="coder-title">AI Coding Agent</span>
+                <span class="workspace-badge" id="coder-model-badge">qwen2.5-coder</span>
+              </div>
+              <div class="coder-header-actions">
+                <button class="chip-toggle active" id="btn-coder-mode" onclick="toggleCoderMode()" title="Toggle Plan Mode (Plan first, ask for approval)">Plan Mode</button>
+                <button class="icon-btn" onclick="clearCoderHistory()" title="Clear Agent History">Clear</button>
+                <button class="icon-btn" onclick="toggleCoderAgentPanel()" title="Collapse Agent Panel">▶</button>
+              </div>
+            </div>
+
+            <!-- Active Context Bar -->
+            <div class="coder-context-bar" id="coder-context-bar">
+              <span class="context-label">Context:</span>
+              <span id="coder-active-file-pill" class="context-pill active" onclick="toggleActiveFileContext()" title="Click to include/exclude active file context">
+                @<span id="coder-context-file-name">None</span>
+              </span>
+              <span class="context-pill ws-pill" id="coder-context-ws-pill" onclick="promptChangeWorkspace()" title="Active Workspace. Click to switch workspace folder.">
+                @ws:<span id="coder-context-ws-name">aether</span>
+              </span>
+            </div>
+
+            <!-- Coder Messages & Plan Cards -->
+            <div id="coder-chat-messages" class="coder-chat-messages">
+              <div class="coder-welcome-card">
+                <h4>Antigravity Pair Programmer</h4>
+                <p>Instruct the coding agent to plan and implement changes in your workspace. When Plan Mode is active, a structured implementation plan is presented for your review and approval before any files on disk are touched.</p>
+                <div class="coder-suggestions">
+                  <button class="chip" onclick="suggestCoderPrompt('Add comprehensive unit tests for the active file')">Add Unit Tests</button>
+                  <button class="chip" onclick="suggestCoderPrompt('Refactor functions with full type annotations and docstrings')">Refactor & Types</button>
+                  <button class="chip" onclick="suggestCoderPrompt('Explain the architecture and data flow of this file')">Explain Code</button>
+                  <button class="chip" onclick="suggestCoderPrompt('Run pytest tests/unit and fix any failing tests')">Run Tests & Fix</button>
+                </div>
+              </div>
+            </div>
+
+            <!-- Prompt Input Area -->
+            <div class="coder-input-wrapper">
+              <div class="coder-input-box">
+                <textarea id="coder-prompt-input" placeholder="Ask coding agent to plan, refactor, or test... (Ctrl+Enter to send)" rows="2" onkeydown="handleCoderInputKeydown(event)"></textarea>
+                <div class="coder-input-actions">
+                  <span class="shortcut-hint">Ctrl+Enter</span>
+                  <button id="btn-send-coder" class="btn-primary-sm" onclick="sendCoderMessage()">Plan & Run</button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Right Edge Dock: Shown when Agent is collapsed -->
+          <div id="agent-collapsed-dock" class="studio-edge-dock dock-right" onclick="toggleCoderAgentPanel()" title="Open AI Coding Agent (Alt+A / Ctrl+Shift+I)">
+            <button class="dock-edge-btn" title="Open AI Coding Agent (Alt+A)">
+              <span class="dock-arrow">◀</span>
+              <span class="dock-icon"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="10" rx="2"/><circle cx="12" cy="5" r="2"/><path d="M12 7v4"/><line x1="8" y1="16" x2="8" y2="16"/><line x1="16" y1="16" x2="16" y2="16"/></svg></span>
+            </button>
+            <span class="dock-vertical-label">Agent</span>
+          </div>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <div id="toast-container"></div>
+  <script type="module" src="/static/js/app.js?v=23"></script>
+</body>
+</html>

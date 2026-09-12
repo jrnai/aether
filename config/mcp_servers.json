@@ -1,0 +1,33 @@
+{
+  "mcpServers": {
+    "notes": {
+      "command": "python",
+      "args": ["src/servers/notes_server.py"],
+      "env": {
+        "AETHER_VAULT_DIR": "./data/vault"
+      },
+      "auto_restart": true
+    },
+    "calendar": {
+      "command": "python",
+      "args": ["src/servers/calendar_server.py"],
+      "env": {
+        "AETHER_DATA_DIR": "./data"
+      },
+      "auto_restart": true
+    },
+    "mail": {
+      "command": "python",
+      "args": ["src/servers/mail_server.py"],
+      "env": {
+        "AETHER_DATA_DIR": "./data"
+      },
+      "auto_restart": true
+    },
+    "search": {
+      "command": "python",
+      "args": ["src/servers/search_server.py"],
+      "auto_restart": true
+    }
+  }
+}

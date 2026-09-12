@@ -1,0 +1,6 @@
+# Project Aether - Specialized Logic, Puzzles & Step-by-Step Reasoning Model
+FROM deepseek-r1:7b
+
+# 16,384 token context window for deep chain-of-thought derivation
+PARAMETER num_ctx 16384
+PARAMETER temperature 0.6

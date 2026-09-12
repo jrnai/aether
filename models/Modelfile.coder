@@ -1,0 +1,8 @@
+# Project Aether - Specialized Coding Model (RTX 5060 Optimized)
+FROM qwen2.5-coder:7b
+
+# 16,384 token context window for workspace navigation, files, and diffs
+PARAMETER num_ctx 16384
+PARAMETER temperature 0.1
+PARAMETER stop "<|im_end|>"
+PARAMETER stop "<|endoftext|>"

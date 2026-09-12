@@ -1,0 +1,33 @@
+# Project Aether - Example Configuration
+# Copy this file to config/config.yaml and adjust to your environment.
+
+version: "1.0"
+
+llm:
+  provider: "ollama"
+  base_url: "http://127.0.0.1:11434"
+  model: "qwen2.5:14b-instruct"
+  temperature: 0.1
+  context_window_tokens: 8192
+  max_turn_steps: 8
+
+storage:
+  database_path: "./data/aether.db"
+  vault_path: "./data/vault"
+  trash_path: "./data/vault/.trash"
+
+safety:
+  require_approval_on_mutation: true
+  approval_timeout_seconds: 60
+  safe_tools_override: []
+
+daemon:
+  enabled: true
+  morning_briefing_time: "07:30"
+  email_poll_interval_minutes: 15
+  sync_calendar_interval_minutes: 30
+
+logging:
+  level: "INFO"
+  log_to_stdout: true
+  audit_to_db: true

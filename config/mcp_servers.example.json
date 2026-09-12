@@ -1,0 +1,38 @@
+{
+  "mcpServers": {
+    "notes": {
+      "command": "python",
+      "args": ["src/servers/notes_server.py"],
+      "env": {
+        "AETHER_VAULT_DIR": "./data/vault"
+      },
+      "auto_restart": true
+    },
+    "calendar": {
+      "command": "python",
+      "args": ["src/servers/calendar_server.py"],
+      "env": {
+        "CALENDAR_PROVIDER": "caldav",
+        "CALENDAR_URL": "http://localhost:5232",
+        "CALENDAR_USER": "aether_user"
+      },
+      "auto_restart": true
+    },
+    "mail": {
+      "command": "python",
+      "args": ["src/servers/mail_server.py"],
+      "env": {
+        "IMAP_SERVER": "imap.example.com",
+        "IMAP_PORT": "993",
+        "IMAP_USER": "user@example.com",
+        "IMAP_USE_SSL": "true"
+      },
+      "auto_restart": true
+    },
+    "search": {
+      "command": "python",
+      "args": ["src/servers/search_server.py"],
+      "auto_restart": true
+    }
+  }
+}
