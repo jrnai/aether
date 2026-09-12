@@ -2,6 +2,7 @@
 import json
 import os
 import sqlite3
+import threading
 import uuid
 from datetime import datetime
 from pathlib import Path
@@ -24,16 +25,31 @@ class DatabaseManager:
     def __init__(self, db_path: str | Path | None = None) -> None:
         self.db_path = Path(db_path).resolve() if db_path else get_default_db_path()
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
+        self._local = threading.local()
         self._init_db()
 
     def _get_connection(self) -> sqlite3.Connection:
-        """Create a configured SQLite connection."""
-        conn = sqlite3.connect(str(self.db_path), timeout=10.0)
-        conn.row_factory = sqlite3.Row
-        conn.execute("PRAGMA journal_mode = WAL;")
-        conn.execute("PRAGMA synchronous = NORMAL;")
-        conn.execute("PRAGMA foreign_keys = ON;")
+        """Return a thread-local configured SQLite connection, caching per thread."""
+        conn = getattr(self._local, "conn", None)
+        if conn is None:
+            conn = sqlite3.connect(str(self.db_path), timeout=10.0)
+            conn.row_factory = sqlite3.Row
+            conn.execute("PRAGMA journal_mode = WAL;")
+            conn.execute("PRAGMA synchronous = NORMAL;")
+            conn.execute("PRAGMA foreign_keys = ON;")
+            self._local.conn = conn
         return conn
+
+    def close(self) -> None:
+        """Close thread-local connection if open."""
+        conn = getattr(self._local, "conn", None)
+        if conn is not None:
+            try:
+                conn.close()
+            except Exception:
+                pass
+            self._local.conn = None
+
 
     def _init_db(self) -> None:
         """Initialize required database tables if they do not exist."""
