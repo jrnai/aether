@@ -62,7 +62,7 @@ class DesktopOverlay:
         """Display helpful feedback when no speech was heard."""
         self._send("timeout", None)
 
-    def dismiss(self, delay_ms: int = 8000) -> None:
+    def dismiss(self, delay_ms: int = 15000) -> None:
         """Schedule auto-hide after delay."""
         self._send("dismiss", delay_ms)
 
@@ -273,7 +273,7 @@ class DesktopOverlay:
             "TIMEOUT": "Didn't catch that",
         }
         self._state_label.config(text=labels.get(state, state), fg=_PRIMARY if state != "TIMEOUT" else _TEXT_MUTED)
-        if state in ("LISTENING", "RECORDING"):
+        if state in ("LISTENING", "RECORDING", "TRANSCRIBING", "PROCESSING"):
             self._start_pulse()
         else:
             self._stop_pulse()

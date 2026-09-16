@@ -340,3 +340,39 @@ def test_desktop_overlay_lifecycle() -> None:
     ov.dismiss(delay_ms=5000)
     ov.hide()
     # If no exceptions were raised, command queuing works cleanly
+
+
+def test_voice_engine_speech_and_silence_detection() -> None:
+    """Verify that speech onset is detected and trailing silence terminates recording promptly."""
+    import numpy as np
+
+    eng = VoiceEngine(silence_timeout_seconds=0.2)
+    eng.ambient_rms = 50.0
+
+    # Create speech chunk (amplitude ~1000, rms ~700) and silence chunk (amplitude ~20, rms ~14)
+    speech_frame = np.full(1280, 1000, dtype=np.int16)
+    silence_frame = np.full(1280, 20, dtype=np.int16)
+
+    # Put 5 speech frames, then 6 silence frames (6 * 0.08s = 0.48s > 0.2s target silence)
+    for _ in range(5):
+        eng._audio_queue.put(speech_frame)
+    for _ in range(6):
+        eng._audio_queue.put(silence_frame)
+
+    mock_whisper = MagicMock()
+    mock_whisper.transcribe.return_value = ([MagicMock(text="what time is it")], MagicMock())
+
+    recognized_texts = []
+    eng.on_speech_recognized = lambda t: recognized_texts.append(t)
+
+    with patch("src.voice.engine.play_wake_chime"), \
+         patch("src.voice.engine.play_ready_chime"), \
+         patch("src.voice.engine.time.sleep"), \
+         patch.object(eng, "_drain_queue"), \
+         patch.object(eng, "_load_whisper_model", return_value=mock_whisper):
+        eng._handle_wake_event()
+
+    mock_whisper.transcribe.assert_called_once()
+    assert mock_whisper.transcribe.call_args.kwargs.get("vad_filter") is True
+    assert eng.state == "PROCESSING"
+

@@ -269,7 +269,7 @@ class VoiceEngine:
                 self._cooldown_until = time.time() + 0.35
             was_speaking = currently_speaking
 
-            if self._pause_event.is_set() or (now < self._cooldown_until):
+            if self._pause_event.is_set() or (now < self._cooldown_until) or self._state in ("TRANSCRIBING", "PROCESSING"):
                 self._drain_queue()
                 speech_buffer.clear()
                 speech_start_time = None
@@ -283,9 +283,13 @@ class VoiceEngine:
 
             frame_rms = float(np.sqrt(np.mean(frame.astype(np.float32) ** 2)))
 
-            # Update exponential moving average of ambient noise level ONLY when NOT speaking
-            if not currently_speaking:
-                self.ambient_rms = 0.96 * self.ambient_rms + 0.04 * frame_rms
+            # Noise floor tracking: fast downward tracking, very slow upward tracking to ignore speech bursts
+            if not currently_speaking and self._state == "LISTENING":
+                if frame_rms < self.ambient_rms:
+                    self.ambient_rms = 0.88 * self.ambient_rms + 0.12 * frame_rms
+                else:
+                    self.ambient_rms = 0.995 * self.ambient_rms + 0.005 * frame_rms
+                self.ambient_rms = max(15.0, min(self.ambient_rms, 250.0))
 
             if self._oww_model is not None:
                 # Tier 1: Wake word prediction via openWakeWord
@@ -416,15 +420,15 @@ class VoiceEngine:
             self._set_state("RECORDING")
 
             recorded_chunks: list[np.ndarray] = []
-            silence_start: float | None = None
             speech_started = False
-            consecutive_speech_chunks = 0
+            consecutive_silent_chunks = 0
+            silent_chunk_duration = CHUNK_SIZE / SAMPLE_RATE  # 0.08s
+            target_silence_duration = max(0.9, self.silence_timeout_seconds)
             start_time = time.time()
 
             # Dynamic adaptive thresholds based on ambient noise floor
-            base_floor = max(15.0, self.ambient_rms)
-            speech_threshold = max(base_floor * 1.30, base_floor + 32.0)
-            silence_threshold = max(base_floor * 1.10, base_floor + 14.0)
+            base_floor = max(15.0, min(self.ambient_rms, 220.0))
+            speech_threshold = max(35.0, base_floor * 1.15, base_floor + 16.0)
 
             while not self._stop_event.is_set():
                 if self._interrupt_event.is_set():
@@ -443,29 +447,25 @@ class VoiceEngine:
                 now = time.time()
                 if frame is not None:
                     recorded_chunks.append(frame)
-
                     rms = float(np.sqrt(np.mean(frame.astype(np.float32) ** 2)))
 
                     if rms >= speech_threshold:
-                        consecutive_speech_chunks += 1
-                        if consecutive_speech_chunks >= 2:
-                            speech_started = True
-                            silence_start = None
+                        speech_started = True
+                        consecutive_silent_chunks = max(0, consecutive_silent_chunks - 2)
                     else:
-                        consecutive_speech_chunks = 0
-                        if rms <= silence_threshold:
-                            if speech_started:
-                                if silence_start is None:
-                                    silence_start = now
-                                elif now - silence_start >= max(1.8, self.silence_timeout_seconds):
-                                    logger.info(
-                                        "Silence detected after speech (total duration: %.2fs). Stopping recording.",
-                                        now - start_time,
-                                    )
-                                    break
-                    if not speech_started and (now - start_time >= 6.0):
-                        if len(recorded_chunks) >= 16:
-                            logger.info("Timeout reached with audio chunks captured. Attempting transcription.")
+                        if speech_started:
+                            consecutive_silent_chunks += 1
+                            if consecutive_silent_chunks * silent_chunk_duration >= target_silence_duration:
+                                logger.info(
+                                    "Silence detected after speech (total duration: %.2fs). Stopping recording.",
+                                    now - start_time,
+                                )
+                                break
+
+                    # Timeout if no speech began after 4.5 seconds
+                    if not speech_started and (now - start_time >= 4.5):
+                        if len(recorded_chunks) >= 12:
+                            logger.info("No explicit speech onset latched, but audio captured. Attempting transcription.")
                             break
                         logger.info("No speech detected after trigger. Timing out.")
                         play_cancel_chime()
@@ -495,6 +495,11 @@ class VoiceEngine:
 
             play_ready_chime()
             self._set_state("TRANSCRIBING")
+            try:
+                ov = get_overlay()
+                ov.set_state("TRANSCRIBING")
+            except Exception:
+                pass
 
             # Concatenate audio chunks and normalize to float32
             full_audio_int16 = np.concatenate(recorded_chunks)
@@ -506,7 +511,8 @@ class VoiceEngine:
                     full_audio_float32,
                     language="en",
                     beam_size=1,
-                    vad_filter=False,
+                    vad_filter=True,
+                    vad_parameters=dict(min_silence_duration_ms=400),
                 )
                 transcript = " ".join(seg.text.strip() for seg in segments).strip()
             except Exception as e:
@@ -521,8 +527,9 @@ class VoiceEngine:
                 logger.info("Transcribed voice input: '%s'", transcript)
                 try:
                     ov = get_overlay()
-                    ov.set_state("PROCESSING")
+                    ov.show("PROCESSING")
                     ov.set_transcript(transcript)
+                    ov.set_state("PROCESSING")
                 except Exception:
                     pass
                 self._set_state("PROCESSING")

@@ -193,6 +193,13 @@ class VoiceService:
                 "turn_id": my_turn_id,
                 "transcript": clean_prompt,
             })
+            try:
+                ov = get_overlay()
+                ov.show("PROCESSING")
+                ov.set_transcript(clean_prompt)
+                ov.set_state("PROCESSING")
+            except Exception:
+                pass
 
             logger.info("Processing voice prompt for Aether (turn %s): '%s'", my_turn_id, clean_prompt)
 
@@ -276,7 +283,7 @@ class VoiceService:
             self.engine._drain_queue()
             self.engine._set_state("LISTENING")
             try:
-                get_overlay().dismiss(delay_ms=12000)
+                get_overlay().dismiss(delay_ms=15000)
             except Exception:
                 pass
 
