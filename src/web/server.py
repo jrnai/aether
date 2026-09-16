@@ -3576,12 +3576,6 @@ def run_web_server(
     print("[*] Project Aether Desktop Application active at:")
     print(f"[*] {url}")
     print("=======================================================\n")
-    if open_browser:
-        try:
-            open_desktop_app_window(url, app_mode=app_mode)
-        except Exception as ex:
-            logger.debug("Could not launch app window: %s", ex)
-
     config = uvicorn.Config(app, host=host, port=port, log_level="info")
     server = uvicorn.Server(config)
     _global_server = server
@@ -3594,15 +3588,34 @@ def run_web_server(
         logger.info("Aether desktop app window closed. Shutting down server...")
         srv.should_exit = True
 
-    if _APP_WINDOW_PROC is not None:
+    if open_browser:
+        def _launch_desktop_window() -> None:
+            import time
+            for _ in range(60):
+                if _is_port_in_use(host, port):
+                    break
+                time.sleep(0.05)
+            try:
+                open_desktop_app_window(url, app_mode=app_mode)
+                if _APP_WINDOW_PROC is not None:
+                    threading.Thread(
+                        target=_monitor_app_window,
+                        args=(_APP_WINDOW_PROC, server),
+                        daemon=True,
+                        name="aether-window-monitor",
+                    ).start()
+            except Exception as ex:
+                logger.debug("Could not launch app window: %s", ex)
+
         threading.Thread(
-            target=_monitor_app_window,
-            args=(_APP_WINDOW_PROC, server),
+            target=_launch_desktop_window,
             daemon=True,
-            name="aether-window-monitor",
+            name="aether-browser-launcher",
         ).start()
 
     def _warmup_model_in_background() -> None:
+        import time
+        time.sleep(2.0)
         try:
             cfg = get_config()
             client = OllamaClient(

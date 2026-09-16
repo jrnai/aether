@@ -38,18 +38,10 @@ if errorlevel 1 (
     echo [OK] Local Ollama service is active.
 )
 
-:: 3. Ensure port 8000 is clean (clear any stale process from previous crashed runs)
-powershell -NoProfile -Command "try { Get-NetTCPConnection -LocalPort 8000 -State Listen -ErrorAction Stop | ForEach-Object { Stop-Process -Id $_.OwningProcess -Force -ErrorAction SilentlyContinue } } catch {}; exit 0" >nul 2>&1
-
-:: 3.5 Check Google Calendar OAuth status
-if exist "credentials.json" (
-    ".venv\Scripts\python.exe" -c "from src.servers.google_calendar_client import GoogleCalendarManager; mgr = GoogleCalendarManager(); exit(0 if mgr.is_logged_in() else 1)" >nul 2>&1
-    if errorlevel 1 (
-        echo [!] Google Calendar authorization is expired or disconnected.
-        echo [*] Launching browser to re-authenticate Google Calendar...
-        ".venv\Scripts\python.exe" -m src.tools.login_google_calendar
-        echo.
-    )
+:: 3. Ensure port 8000 is clean (only invoke PowerShell if port is actually occupied)
+netstat -ano | findstr :8000 | findstr LISTENING >nul 2>&1
+if not errorlevel 1 (
+    powershell -NoProfile -Command "try { Get-NetTCPConnection -LocalPort 8000 -State Listen -ErrorAction Stop | ForEach-Object { Stop-Process -Id $_.OwningProcess -Force -ErrorAction SilentlyContinue } } catch {}; exit 0" >nul 2>&1
 )
 
 

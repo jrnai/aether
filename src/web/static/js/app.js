@@ -237,7 +237,7 @@ export function initSidebarCollapse() {
 // =============================================================================
 // Refresh All Data
 // =============================================================================
-export async function refreshAllData() {
+export async function refreshAllData(forceFresh = false) {
   const refreshBtn = document.getElementById('btn-refresh');
   const refreshText = document.getElementById('btn-refresh-text');
   const refreshIcon = refreshBtn ? refreshBtn.querySelector('.refresh-icon') : null;
@@ -251,49 +251,56 @@ export async function refreshAllData() {
   let refreshError = null;
 
   try {
-    const promises = [
+    // 1. Immediately fetch active Overview tab & cached weather (< 50ms)
+    await Promise.all([
       fetchOverview(),
-      fetchWeather(true),
+      fetchWeather(forceFresh),
+      fetchTasks(),
+    ]);
+
+    if (refreshBtn) {
+      refreshBtn.classList.remove('loading', 'refreshing');
+      refreshBtn.classList.add('refreshed');
+      if (refreshText) refreshText.innerText = 'Synced';
+
+      setTimeout(() => {
+        refreshBtn.classList.remove('refreshed');
+        if (refreshText) refreshText.innerText = 'Refresh';
+        refreshBtn.disabled = false;
+      }, 800);
+    }
+
+    if (forceFresh) {
+      showToast('All dashboard data & workspace synchronized!', 'success');
+    }
+
+    // 2. Fetch secondary tabs in the background without blocking the UI
+    const backgroundPromises = [
       fetchCalendar(),
       fetchEmails(),
-      fetchTasks(),
     ];
 
     if (typeof fetchModels === 'function') {
-      promises.push(fetchModels());
+      backgroundPromises.push(fetchModels());
     }
 
     if (typeof loadFilesTree === 'function' && fileTreeData) {
-      promises.push(loadFilesTree());
+      backgroundPromises.push(loadFilesTree());
     }
 
     // Fire-and-forget background update for news feed & AI student digest
     fetchNews();
     fetchAiDigest();
 
-    await Promise.all(promises);
+    await Promise.all(backgroundPromises);
   } catch (err) {
     console.error('Error refreshing data:', err);
     refreshError = err;
-  } finally {
     if (refreshBtn) {
       refreshBtn.classList.remove('loading', 'refreshing');
-
-      if (!refreshError) {
-        refreshBtn.classList.add('refreshed');
-        if (refreshText) refreshText.innerText = 'Synced';
-        showToast('All dashboard data & workspace synchronized!', 'success');
-
-        setTimeout(() => {
-          refreshBtn.classList.remove('refreshed');
-          if (refreshText) refreshText.innerText = 'Refresh';
-          refreshBtn.disabled = false;
-        }, 1200);
-      } else {
-        if (refreshText) refreshText.innerText = 'Refresh';
-        refreshBtn.disabled = false;
-        showToast('Refresh failed: ' + refreshError.message, 'error');
-      }
+      if (refreshText) refreshText.innerText = 'Refresh';
+      refreshBtn.disabled = false;
+      if (forceFresh) showToast('Refresh failed: ' + refreshError.message, 'error');
     }
   }
 }

@@ -142,7 +142,6 @@ class VoiceEngine:
 
         self._stop_event.clear()
         self._pause_event.clear()
-        self._init_models()
 
         self._worker_thread = threading.Thread(
             target=self._run_loop,
@@ -230,6 +229,7 @@ class VoiceEngine:
 
     def _run_loop(self) -> None:
         """Main processing thread managing state machine and audio streaming."""
+        self._init_models()
         import sounddevice as sd
 
         try:
