@@ -546,5 +546,25 @@ def test_authenticate_google_calendar_tool() -> None:
         mock_popen.assert_called_once()
 
 
+def test_create_event_date_and_time_separate(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("AETHER_DATA_DIR", str(tmp_path))
+    res = create_event(
+        title="internship interview",
+        date="22/9/2026",
+        time="11:30pm",
+    )
+    assert res["status"] == "success"
+    assert res["title"] == "internship interview"
+    assert "2026-09-22T23:30:00" in res["start"]
+    assert "2026-09-23T00:00:00" in res["end"]
+
+
+def test_parse_iso_dot_date_preservation() -> None:
+    dt = _parse_iso("22.09.2026 11:30pm")
+    assert dt.strftime("%Y-%m-%d") == "2026-09-22"
+    assert dt.hour == 23 and dt.minute == 30
+
+
+
 
 

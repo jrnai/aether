@@ -343,6 +343,35 @@ def test_agent_loop_prunes_hallucinated_kwargs() -> None:
     assert captured == {"title": "Task", "start_iso": "10:00"}
 
 
+def test_agent_loop_calendar_normalization_date_and_time() -> None:
+    from src.agent.loop import normalize_tool_args
+    # Case 1: date and time separate
+    raw = {"title": "internship interview", "date": "22/9/2026", "time": "11:30pm"}
+    norm = normalize_tool_args("calendar_create_event", raw)
+    assert norm["start_iso"] == "22/9/2026 11:30pm"
+    assert norm["title"] == "internship interview"
+
+    # Case 2: summary and 24h time with createevent
+    raw2 = {"summary": "team sync", "date": "2026-09-22", "time": "14:00"}
+    norm2 = normalize_tool_args("create_event", raw2)
+    assert norm2["start_iso"] == "2026-09-22 14:00"
+    assert norm2["title"] == "team sync"
+
+
+def test_agent_loop_resolves_calendarcreateevent_aliases() -> None:
+    loop = AgentLoop()
+    dummy = lambda **kwargs: kwargs
+    loop.register_tool(name="calendar_create_event", description="Create event", parameters={}, func=dummy)
+
+    assert loop._resolve_tool_name("calendarcreateevent") == "calendar_create_event"
+    assert loop._resolve_tool_name("calendarcreateevent()") == "calendar_create_event"
+    assert loop._resolve_tool_name("'calendarcreateevent'") == "calendar_create_event"
+    assert loop._resolve_tool_name("createevent") == "calendar_create_event"
+    assert loop._resolve_tool_name("functions.calendar_create_event") == "calendar_create_event"
+    assert loop._resolve_tool_name("calendar.create_event") == "calendar_create_event"
+
+
+
 
 
 

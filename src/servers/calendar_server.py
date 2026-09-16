@@ -3,7 +3,9 @@ import json
 import os
 import re
 import uuid
-from datetime import datetime, time, timedelta
+from datetime import datetime, datetime as _datetime, time as _time, timedelta as _timedelta
+time = _time
+timedelta = _timedelta
 from pathlib import Path
 from typing import Any
 
@@ -60,8 +62,9 @@ def _parse_iso(iso_str: str) -> datetime:
         return datetime.now().astimezone()
 
     # Pre-normalize dot-separated time notation often produced by STT engines (e.g. "11.30 pm" -> "11:30 pm")
+    # Negative lookahead (?!\.\d) ensures dot dates like "22.09.2026" are not corrupted
     clean = re.sub(
-        r"\b(\d{1,2})\.(\d{2})(?:\s*(am|pm))?\b",
+        r"\b(\d{1,2})\.(\d{2})(?!\.\d)(?:\s*(am|pm))?\b",
         lambda m: f"{m.group(1)}:{m.group(2)}" + (f" {m.group(3)}" if m.group(3) else ""),
         clean,
         flags=re.IGNORECASE,
@@ -133,7 +136,17 @@ def _parse_iso(iso_str: str) -> datetime:
     # 4. Fallback to dateutil if available
     try:
         from dateutil import parser
-        parsed = parser.parse(clean, default=datetime.combine(now.date(), time(0, 0)))
+        is_day_first = False
+        m_dayfirst = re.search(r"\b(\d{1,2})[/.-](\d{1,2})[/.-](\d{2,4})\b", clean)
+        if m_dayfirst:
+            first_num = int(m_dayfirst.group(1))
+            sec_num = int(m_dayfirst.group(2))
+            if first_num > 12 >= sec_num:
+                is_day_first = True
+        try:
+            parsed = parser.parse(clean, default=datetime.combine(now.date(), time(0, 0)), dayfirst=is_day_first)
+        except Exception:
+            parsed = parser.parse(clean, default=datetime.combine(now.date(), time(0, 0)), dayfirst=not is_day_first)
         if parsed.tzinfo is None:
             parsed = parsed.replace(tzinfo=now.tzinfo)
         return parsed
@@ -399,6 +412,22 @@ def create_event(
     endTime: str | None = None,
     start_date: str | None = None,
     end_date: str | None = None,
+    date: str | None = None,
+    time: str | None = None,
+    time_str: str | None = None,
+    date_str: str | None = None,
+    day: str | None = None,
+    date_iso: str | None = None,
+    hour: str | None = None,
+    event_title: str | None = None,
+    subject: str | None = None,
+    title_str: str | None = None,
+    datetime: str | None = None,
+    timestamp: str | None = None,
+    notes: str | None = None,
+    place: str | None = None,
+    end_datetime: str | None = None,
+    end_time_str: str | None = None,
     duration_minutes: int | None = None,
     duration: int | None = None,
     desc: str | None = None,
@@ -411,11 +440,46 @@ def create_event(
     if events and isinstance(events, list):
         return create_events(events=events)
 
-    title = title or summary or name or event or task or text or "Scheduled Event"
-    start_iso = start_iso or start or start_time or startTime or start_date or ""
-    end_iso = end_iso or end or end_time or endTime or end_date or ""
-    description = description or desc or details or ""
-    location = location or loc or room or ""
+    title = (
+        title
+        or summary
+        or name
+        or event
+        or task
+        or text
+        or event_title
+        or subject
+        or title_str
+        or "Scheduled Event"
+    )
+
+    # Resolve date and time if passed separately or under aliases
+    d_val = date or start_date or date_str or day or date_iso
+    t_val = time or time_str or hour
+
+    raw_start = start_iso or start or start_time or startTime or datetime or timestamp or ""
+
+    if raw_start and d_val and t_val and (raw_start == d_val or raw_start == t_val):
+        start_iso = f"{d_val} {t_val}"
+    elif not raw_start and d_val and t_val:
+        start_iso = f"{d_val} {t_val}"
+    elif not raw_start and d_val:
+        start_iso = str(d_val)
+    elif not raw_start and t_val:
+        start_iso = str(t_val)
+    else:
+        start_iso = str(raw_start)
+        if t_val and not any(k in start_iso.lower() for k in (":", "am", "pm")):
+            start_iso = f"{start_iso.strip()} {str(t_val).strip()}"
+
+    raw_end = end_iso or end or end_time or endTime or end_date or end_datetime or ""
+    if not raw_end and d_val and end_time_str:
+        end_iso = f"{d_val} {end_time_str}"
+    else:
+        end_iso = str(raw_end)
+
+    description = description or desc or details or notes or ""
+    location = location or loc or room or place or ""
 
     if not start_iso:
         return {
@@ -485,7 +549,7 @@ def create_event(
             "description": description.strip(),
             "location": location.strip(),
             "recurrence": [recurrence] if isinstance(recurrence, str) else list(recurrence) if recurrence else [],
-            "created_at": datetime.now().astimezone().isoformat(),
+            "created_at": _datetime.now().astimezone().isoformat(),
         }
 
         events_list = load_events()
@@ -551,6 +615,8 @@ def create_events(events: list[dict[str, Any]]) -> dict[str, Any]:
             location=loc,
             description=desc,
             recurrence=rec,
+            date=evt.get("date") or evt.get("date_str") or evt.get("day"),
+            time=evt.get("time") or evt.get("time_str"),
         )
         if res.get("status") == "success":
             created.append({
