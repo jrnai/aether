@@ -62,13 +62,12 @@ export function renderTaskList(containerId, tasks, allowDelete) {
           onchange="window.toggleTaskComplete('${escapeJsString(t.text)}', '${escapeJsString(t.file || 'Inbox.md')}')"
         >
         <span class="task-text ${isCompleted ? 'task-name-crossed' : ''}">${escapeHtml(t.text)}</span>
-        <span 
-          class="badge-priority badge-${priorityVal}" 
+        <button class="badge-priority badge-${priorityVal}" type="button"
           title="Priority: ${priorityVal}. Click to cycle priority (Normal -> Important -> Urgent)"
           onclick="window.cycleTaskPriority('${escapeJsString(t.text)}', '${priorityVal}', '${escapeJsString(t.file || 'Inbox.md')}')"
         >
           ${priorityLabel}
-        </span>
+        </button>
         ${tagHtml}
         ${dueHtml}
         ${fileSource}

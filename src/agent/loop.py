@@ -1,7 +1,12 @@
 """ReAct execution loop coordinating context, LLM inference, safety gates, and tool dispatch."""
+from dataclasses import asdict, dataclass, field
+import inspect
 import json
 import logging
 import re
+import threading
+import time
+import uuid
 from collections.abc import Callable, Generator
 from typing import Any
 
@@ -32,11 +37,18 @@ TOOL_DOMAINS: dict[str, set[str]] = {
         "calendar_list_events",
         "calendar_create_event",
         "calendar_create_events",
+        "calendar_update_event",
+        "calendar_update_events",
+        "calendar_delete_event",
         "calendar_get_free_slots",
+        "calendar_sync_local_events_to_google",
+        "calendar_authenticate_google_calendar",
     },
     "mail": {
         "mail_list_emails",
         "mail_fetch_unread",
+        "get_email_details",
+        "mail_update_flag",
         "send_email",
         "stage_email_draft",
     },
@@ -50,9 +62,17 @@ TOOL_DOMAINS: dict[str, set[str]] = {
     "web": {
         "search_web",
         "fetch_web_page",
+        "get_weather",
+        "get_current_weather",
+        "set_weather_location",
     },
     "image_generation": {
         "generate_image",
+    },
+    "screen_and_vision": {
+        "capture_screen",
+        "get_active_window",
+        "show_aether_dashboard",
     },
 }
 
@@ -61,7 +81,9 @@ DOMAIN_KEYWORDS: dict[str, list[str]] = {
         "file", "files", "folder", "folders", "code", "coding", "function", "class",
         "bug", "fix", "patch", "test", "tests", "pytest", "run", "terminal", "command",
         "repo", "git", "directory", "workspace", "syntax", "python", "javascript",
-        "html", "css", "refactor", "lint", "inspect", "diff", "delete", "remove", "rm", "unlink", "trash",
+        "html", "css", "refactor", "lint", "inspect", "diff", "unlink",
+        "move to trash", "send to trash", "trash file", "trash folder",
+        "delete file", "remove file", "delete folder", "remove folder", "rm",
         "graph", "symbol", "ast", "caller", "callee", "trace", "snippet", "architecture",
         ".py", ".js", ".ts", ".html", ".css", ".json", ".md", ".yaml", ".yml", ".txt", ".sh", ".sql",
     ],
@@ -70,6 +92,17 @@ DOMAIN_KEYWORDS: dict[str, list[str]] = {
         "free slot", "free slots", "free time", "busy", "appointment", "invite",
         "remind me on", "tomorrow", "yesterday", "wednesday", "thursday", "friday",
         "saturday", "sunday", "monday", "tuesday", "noon", "morning", "afternoon",
+        "plan", "plans", "plans for today", "plans today", "schedule today", "today's schedule",
+        "today's plans", "what do i have today", "what's on today", "what is on today",
+        "any plans", "am i free", "free today", "busy today",
+        "briefing", "morning briefing", "morning brief", "brief me", "daily briefing",
+        "time block", "time blocks", "timeblock", "timeblocks", "timeblocking",
+        "block time", "block out", "time slot", "timeslots", "schedule an event",
+        "add to calendar", "add event", "tonight",
+        "session", "study session", "appointment", "class", "lecture", "call", "sync",
+        "standup", "catch-up", "reminder", "hangout", "interview", "webinar", "workshop",
+        "lander", "google lander", "gcal", "cal", "google cal", "google calendar",
+        "remove event", "delete event", "cancel event", "reschedule", "postpone",
     ],
     "mail": [
         "mail", "email", "emails", "inbox", "unread", "draft", "drafts", "send email",
@@ -78,15 +111,30 @@ DOMAIN_KEYWORDS: dict[str, list[str]] = {
     "notes": [
         "todo", "todos", "task", "tasks", "note", "notes", "daily note", "daily review",
         "checklist", "mark as completed", "completed task", "add task", "add todo",
+        "shopping", "shopping list", "buy", "groceries", "grocery", "errand", "errands",
+        "purchase", "need to buy", "remember to buy", "pick up", "get", "store",
+        "chore", "chores", "take out the trash", "trash day",
+        "briefing", "morning briefing", "morning brief", "brief me", "daily briefing",
     ],
     "web": [
         "search the web", "search online", "google", "lookup", "browse", "internet",
-        "latest news", "weather", "who is", "what is the price", "url", "http", "https",
+        "latest news", "weather", "forecast", "temperature", "rain", "snow", "degrees",
+        "sunny", "cloudy", "celsius", "fahrenheit", "precipitation",
+        "who is", "what is the price", "url", "http", "https",
     ],
     "image_generation": [
         "generate image", "create image", "draw", "generate an image", "picture of",
         "make an image", "paint", "illustration", "sketch", "sdxl", "comfyui", "flux",
         "render an image", "photo of", "generate picture", "draw an image", "image of",
+    ],
+    "screen_and_vision": [
+        "screen", "screens", "screenshot", "screenshots", "display", "monitor",
+        "desktop", "window", "windows", "active window", "foreground window",
+        "what's on my screen", "what is on my screen", "look at my screen",
+        "look at this", "see my screen", "read my screen", "what am i looking at",
+        "inspect screen", "snap screen", "capture screen", "ocr", "error on screen",
+        "show dashboard", "open dashboard", "show app", "open app", "bring window to front",
+        "show aether", "open aether",
     ],
 }
 
@@ -95,6 +143,10 @@ def detect_intent_domains(query: str) -> set[str]:
     """Detect capability domains relevant to a user query."""
     q_lower = f" {query.lower()} "
     detected: set[str] = set()
+
+    # Automatically identify temporal and schedule time references (e.g. 5pm, 10:30am)
+    if re.search(r"\b\d{1,2}(?::\d{2})?\s*(?:am|pm)\b", q_lower):
+        detected.add("calendar")
 
     for domain, keywords in DOMAIN_KEYWORDS.items():
         for kw in keywords:
@@ -117,6 +169,93 @@ def get_tool_domain(tool_name: str) -> str | None:
         if clean_name in tools:
             return domain
     return None
+
+
+def normalize_tool_args(fn_name: str, args: dict[str, Any]) -> dict[str, Any]:
+    """Normalize common parameter name variants across models and domains."""
+    res = dict(args)
+
+    # 1. Files & coding normalization
+    if fn_name.startswith("files_") or "file" in fn_name or fn_name in ("runcommand", "terminalcommand"):
+        if "path" not in res:
+            for k in ("file_path", "filename", "file", "filepath", "target_file", "path_to_file"):
+                if k in res:
+                    res["path"] = res[k]
+                    break
+        if "content" not in res:
+            for k in ("text", "code", "data", "body"):
+                if k in res:
+                    res["content"] = res[k]
+                    break
+        if "command" not in res and "cmd" in res:
+            res["command"] = res["cmd"]
+        if "target" not in res and "old" in res:
+            res["target"] = res["old"]
+        if "replacement" not in res and "new" in res:
+            res["replacement"] = res["new"]
+
+    # 2. Notes / Todos normalization
+    if fn_name.startswith("notes_") or "todo" in fn_name or "note" in fn_name:
+        if "text" not in res and "task" not in res:
+            for k in ("tasks", "items", "todo", "todos", "item", "description", "title"):
+                if k in res:
+                    res["text"] = res[k]
+                    break
+
+    # 3. Calendar normalization
+    if fn_name.startswith("calendar_") or "calendar" in fn_name:
+        if "title" not in res:
+            for k in ("summary", "name", "event", "task", "activity", "text"):
+                if k in res:
+                    res["title"] = res[k]
+                    break
+        if "start_iso" not in res:
+            for k in ("start", "start_time", "startTime", "start_date", "start_dt"):
+                if k in res:
+                    res["start_iso"] = res[k]
+                    break
+        if "end_iso" not in res:
+            for k in ("end", "end_time", "endTime", "end_date", "end_dt"):
+                if k in res:
+                    res["end_iso"] = res[k]
+                    break
+        if "date" not in res:
+            for k in ("date_str", "day", "date_iso"):
+                if k in res:
+                    res["date"] = res[k]
+                    break
+        if "duration_minutes" not in res and "duration" in res:
+            res["duration_minutes"] = res["duration"]
+        # Clean up keys that conflict with create_event / update_event
+        res.pop("content", None)
+        if "title" in res:
+            res.pop("text", None)
+
+    return res
+
+
+@dataclass
+class StepTrace:
+    step: int
+    type: str  # "inference", "tool_call", "synthesis"
+    name: str = ""
+    latency_ms: float = 0.0
+    tokens: int = 0
+    status: str = "ok"  # "ok", "error", "cancelled"
+    details: dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass
+class ExecutionTrace:
+    trace_id: str
+    total_latency_ms: float
+    total_tokens: int
+    step_count: int
+    model: str
+    steps: list[StepTrace] = field(default_factory=list)
+
+    def to_dict(self) -> dict[str, Any]:
+        return asdict(self)
 
 
 class AgentLoop:
@@ -143,6 +282,28 @@ class AgentLoop:
         self.tools_schema: list[dict[str, Any]] = []
         self.tool_dispatch: dict[str, Callable[..., Any]] = {}
         self.messages: list[dict[str, Any]] = []
+        self.last_trace: ExecutionTrace | None = None
+
+    def _finalize_trace(
+        self,
+        trace_id: str,
+        t_start: float,
+        step_traces: list[StepTrace],
+        steps: int,
+    ) -> ExecutionTrace:
+        """Compile and cache structured telemetry for this execution trajectory."""
+        total_lat = round((time.perf_counter() - t_start) * 1000, 1)
+        tot_tok = sum(s.tokens for s in step_traces)
+        trace = ExecutionTrace(
+            trace_id=trace_id,
+            total_latency_ms=total_lat,
+            total_tokens=tot_tok,
+            step_count=steps,
+            model=self.model,
+            steps=step_traces,
+        )
+        self.last_trace = trace
+        return trace
 
     def get_active_tools_schema(
         self,
@@ -157,6 +318,18 @@ class AgentLoop:
         combined_domains = set(intent_domains)
         if active_domains:
             combined_domains.update(active_domains)
+
+        # Context-aware retention: inspect recent conversation history (last 4 messages)
+        # If the recent dialogue discussed calendar, mail, notes, or files, retain those domains
+        if hasattr(self, "messages") and self.messages:
+            for past_m in self.messages[-4:]:
+                content = str(past_m.get("content", "") or "")
+                if content:
+                    combined_domains.update(detect_intent_domains(content))
+                if past_m.get("role") == "tool":
+                    tool_dom = get_tool_domain(str(past_m.get("name", "")))
+                    if tool_dom:
+                        combined_domains.add(tool_dom)
 
         # If no specific domain detected, keep all tools
         if not combined_domains:
@@ -209,6 +382,33 @@ class AgentLoop:
     def reset_conversation(self) -> None:
         """Clear the conversational memory."""
         self.messages = []
+
+    def _invoke_tool_safely(
+        self,
+        func: Callable[..., Any],
+        fn_name: str,
+        args: dict[str, Any],
+    ) -> tuple[Any, bool]:
+        """Execute a tool with signature inspection, pruning unrecognized hallucinated kwargs."""
+        is_err = False
+        try:
+            sig = inspect.signature(func)
+            has_var_kw = any(p.kind == inspect.Parameter.VAR_KEYWORD for p in sig.parameters.values())
+            if not has_var_kw:
+                filtered_args = {k: v for k, v in args.items() if k in sig.parameters}
+                if len(filtered_args) < len(args):
+                    dropped = set(args.keys()) - set(filtered_args.keys())
+                    logger.debug("Pruned unrecognized arguments for tool '%s': %s", fn_name, dropped)
+            else:
+                filtered_args = args
+
+            res = func(**filtered_args)
+            if isinstance(res, dict) and res.get("status") == "error":
+                is_err = True
+            return res, is_err
+        except Exception as ex:
+            logger.error("Error executing tool %s: %s", fn_name, ex)
+            return {"status": "error", "message": f"Execution error in '{fn_name}': {ex}"}, True
 
     def _resolve_tool_name(self, name: str) -> str | None:
         """Fuzzily resolve tool names, accommodating missing underscores, case differences, and aliases common in 7B models."""
@@ -347,8 +547,31 @@ class AgentLoop:
                 pos = idx + 1
         return results
 
-    def run_turn(self, user_input: str, images: list[str] | None = None) -> str:
+    def _sanitize_final_content(self, text: str) -> str:
+        """Strip any leaked <tool_call> or <think> XML tags from final conversational text."""
+        if not text:
+            return ""
+        # Strip <think>...</think>
+        cleaned = re.sub(r"<think>[\s\S]*?</think>", "", text, flags=re.IGNORECASE).strip()
+        # Strip <tool_call>...</tool_call>
+        cleaned = re.sub(r"<tool_call>[\s\S]*?</tool_call>", "", cleaned, flags=re.IGNORECASE).strip()
+        cleaned = re.sub(r"</?tool_call>", "", cleaned, flags=re.IGNORECASE).strip()
+        cleaned = re.sub(r"</?think>", "", cleaned, flags=re.IGNORECASE).strip()
+        if not cleaned and ("tool_call" in text.lower() or "arguments" in text.lower()):
+            return "I have processed and executed that action for you."
+        return cleaned or text
+
+    def run_turn(
+        self,
+        user_input: str,
+        images: list[str] | None = None,
+        cancel_event: threading.Event | None = None,
+    ) -> str:
         """Execute a full conversation turn with the user, handling multi-step tool calls and multimodal images."""
+        trace_id = f"tr_{uuid.uuid4().hex[:8]}"
+        t_start = time.perf_counter()
+        step_traces: list[StepTrace] = []
+
         # Ensure fresh temporal grounding on each turn if starting or update system prompt
         system_prompt = generate_system_prompt(self.custom_instructions)
 
@@ -364,13 +587,24 @@ class AgentLoop:
         self.messages.append(user_msg)
         invoked_web_sources: list[dict[str, str]] = []
         invoked_tool_domains: set[str] = set()
+        consecutive_tool_errors: int = 0
+        last_failed_tool: str = ""
 
         steps = 0
         while steps < self.max_steps:
+            if cancel_event and cancel_event.is_set():
+                logger.info("AgentLoop turn cancelled by external event.")
+                self._finalize_trace(trace_id, t_start, step_traces, steps)
+                return "Action was cancelled."
+
             steps += 1
             logger.debug("ReAct step %d for input: %s", steps, user_input[:50])
+            step_t0 = time.perf_counter()
 
             try:
+                if cancel_event and cancel_event.is_set():
+                    self._finalize_trace(trace_id, t_start, step_traces, steps)
+                    return "Action was cancelled."
                 is_vision_model = any(k in (self.model or "").lower() for k in ("vl", "vision", "llava", "moondream", "minicpm"))
                 prepared_messages = self.context_manager.prepare_messages(self.messages, model=self.model)
                 if not is_vision_model:
@@ -399,10 +633,24 @@ class AgentLoop:
                         )
                     except Exception as retry_err:
                         logger.error("Inference retry failed: %s", retry_err)
+                        self._finalize_trace(trace_id, t_start, step_traces, steps)
                         return f"Error during model inference: {retry_err}"
                 else:
                     logger.error("Inference failed: %s", e)
+                    self._finalize_trace(trace_id, t_start, step_traces, steps)
                     return f"Error during model inference: {e}"
+
+            inf_latency = round((time.perf_counter() - step_t0) * 1000, 1)
+            p_toks = sum(len(str(m.get("content", ""))) // 4 for m in prepared_messages)
+            r_toks = len(str(response_msg.get("content") or "")) // 4
+            step_traces.append(StepTrace(
+                step=steps,
+                type="inference",
+                name=self.model,
+                latency_ms=inf_latency,
+                tokens=p_toks + r_toks,
+                status="ok",
+            ))
 
             tool_calls = response_msg.get("tool_calls") or []
 
@@ -456,6 +704,8 @@ class AgentLoop:
                     except Exception as ex:
                         logger.warning("Direct chat fallback failed: %s", ex)
 
+                final_content = self._sanitize_final_content(final_content)
+
                 if not final_content:
                     final_content = "I have processed your request. How else can I assist you?"
 
@@ -469,6 +719,7 @@ class AgentLoop:
                 final_content = re.sub(r"https?://[^\s\)]*?/api/generated_images/", "/api/generated_images/", final_content)
 
                 self.messages.append({"role": "assistant", "content": final_content})
+                self._finalize_trace(trace_id, t_start, step_traces, steps)
                 return final_content
 
             # Record assistant message with tool calls in history
@@ -499,25 +750,12 @@ class AgentLoop:
                 else:
                     args = dict(raw_args) if isinstance(raw_args, dict) else {}
 
-                # Normalize common parameter name variants across models
-                if "path" not in args:
-                    for k in ("file_path", "filename", "file", "filepath", "target_file", "path_to_file"):
-                        if k in args:
-                            args["path"] = args[k]
-                            break
-                if "content" not in args:
-                    for k in ("text", "code", "data", "body"):
-                        if k in args:
-                            args["content"] = args[k]
-                            break
-                if "command" not in args and "cmd" in args:
-                    args["command"] = args["cmd"]
-                if "target" not in args and "old" in args:
-                    args["target"] = args["old"]
-                if "replacement" not in args and "new" in args:
-                    args["replacement"] = args["new"]
+                args = normalize_tool_args(fn_name, args)
 
+                tool_t0 = time.perf_counter()
+                is_err = False
                 if fn_name not in self.tool_dispatch:
+                    is_err = True
                     tool_output = json.dumps({
                         "status": "error",
                         "message": f"Tool '{fn_name}' is not recognized.",
@@ -529,10 +767,10 @@ class AgentLoop:
                         tool_output = cancel_payload or "Action cancelled by user."
                     else:
                         func = self.tool_dispatch[fn_name]
-                        try:
-                            res = func(**args)
-                            tool_output = json.dumps(res) if isinstance(res, (dict, list)) else str(res)
+                        res, is_err = self._invoke_tool_safely(func, fn_name, args)
+                        tool_output = json.dumps(res) if isinstance(res, (dict, list)) else str(res)
 
+                        if not is_err:
                             # Record web sources if search/fetch tool was executed
                             if fn_name in ("search_web", "websearch", "searchinternet", "duckduckgo", "googlesearch"):
                                 for m in re.finditer(r"\[(.*?)\]\(((?:https?|file):\/\/[^\s\)]+)\)", str(tool_output)):
@@ -546,15 +784,52 @@ class AgentLoop:
                                     from urllib.parse import urlparse
                                     host = urlparse(target_url).netloc or "Web Page"
                                     invoked_web_sources.append({"title": host, "url": target_url})
-                        except Exception as ex:
-                            logger.error("Error executing tool %s: %s", fn_name, ex)
-                            tool_output = json.dumps({
-                                "status": "error",
-                                "message": f"Execution error in '{fn_name}': {ex}",
-                            })
 
-                # Compress payload to prevent context window exhaustion (higher budget for code, directory, and command files)
-                tool_budget = 12000 if fn_name in ("files_read_file", "files_search_files", "files_list_directory", "files_patch_file", "files_run_command", "files_set_workspace") else None
+                tool_lat = round((time.perf_counter() - tool_t0) * 1000, 1)
+                step_traces.append(StepTrace(
+                    step=steps,
+                    type="tool_call",
+                    name=fn_name,
+                    latency_ms=tool_lat,
+                    tokens=len(str(tool_output)) // 4,
+                    status="error" if is_err else ("cancelled" if (fn_name in self.tool_dispatch and not authorized) else "ok"),
+                    details={"args_keys": list(args.keys())},
+                ))
+
+                if is_err:
+                    if last_failed_tool == fn_name:
+                        consecutive_tool_errors += 1
+                    else:
+                        consecutive_tool_errors = 1
+                        last_failed_tool = fn_name
+                else:
+                    consecutive_tool_errors = 0
+                    last_failed_tool = ""
+
+                if fn_name == "capture_screen" and isinstance(res, dict) and res.get("image_base64"):
+                    if self.messages:
+                        for m in reversed(self.messages):
+                            if m.get("role") == "user":
+                                m.setdefault("images", []).append(res["image_base64"])
+                                break
+                    try:
+                        from src.config import get_config
+                        cfg = get_config()
+                        vis_model = getattr(cfg.llm, "vision_model", "qwen2.5vl:7b")
+                        if vis_model:
+                            self.model = vis_model
+                            if self.client:
+                                self.client.default_model = vis_model
+                    except Exception:
+                        pass
+
+                # Compress payload to prevent context window exhaustion (higher budget for code, directory, note, and calendar reads)
+                tool_budget = 12000 if fn_name in (
+                    "files_read_file", "files_search_files", "files_list_directory",
+                    "files_patch_file", "files_run_command", "files_set_workspace",
+                    "notes_read_daily", "read_project_notes", "notes_list_todos",
+                    "calendar_list_events",
+                ) else None
                 safe_output = self.context_manager.compress_tool_result(str(tool_output), max_chars=tool_budget)
 
                 # Append tool observation back to conversation history
@@ -563,6 +838,13 @@ class AgentLoop:
                     "name": fn_name,
                     "content": safe_output,
                 })
+
+            if consecutive_tool_errors >= 2:
+                logger.warning("Aborting ReAct loop: tool '%s' failed %d consecutive times.", last_failed_tool, consecutive_tool_errors)
+                abort_msg = f"I encountered repeated errors attempting to execute '{last_failed_tool}'. Please verify the parameters."
+                self.messages.append({"role": "assistant", "content": abort_msg})
+                self._finalize_trace(trace_id, t_start, step_traces, steps)
+                return abort_msg
 
         # Exceeded step limit - attempt a final wrap-up answer summarizing actions taken
         fallback_msg = f"Agent reached the maximum tool execution limit ({self.max_steps} steps) without completing."
@@ -583,6 +865,7 @@ class AgentLoop:
             sources_lines = [f"- [{s['title']}]({s['url']})" for s in invoked_web_sources[:3]]
             fallback_msg = fallback_msg.rstrip() + "\n\n**Sources:**\n" + "\n".join(sources_lines)
         self.messages.append({"role": "assistant", "content": fallback_msg})
+        self._finalize_trace(trace_id, t_start, step_traces, steps)
         return fallback_msg
 
     def run_turn_stream(
@@ -604,11 +887,18 @@ class AgentLoop:
         self.messages.append(user_msg)
         invoked_web_sources: list[dict[str, str]] = []
         invoked_tool_domains: set[str] = set()
+        consecutive_tool_errors: int = 0
+        last_failed_tool: str = ""
+
+        trace_id = f"tr_{uuid.uuid4().hex[:8]}"
+        t_start = time.perf_counter()
+        step_traces: list[StepTrace] = []
 
         steps = 0
         while steps < self.max_steps:
             steps += 1
             logger.debug("ReAct stream step %d for input: %s", steps, user_input[:50])
+            step_t0 = time.perf_counter()
 
             try:
                 is_vision_model = any(k in (self.model or "").lower() for k in ("vl", "vision", "llava", "moondream", "minicpm"))
@@ -635,7 +925,9 @@ class AgentLoop:
                     if ev_type == "token":
                         delta = chunk_ev.get("delta", "")
                         streamed_tokens.append(delta)
-                        if not accumulated_tool_calls:
+                        full_so_far = "".join(streamed_tokens)
+                        is_tool_or_think = "<tool_call" in full_so_far or "<think" in full_so_far
+                        if not accumulated_tool_calls and not is_tool_or_think:
                             yield {"type": "token", "delta": delta}
                     elif ev_type == "tool_calls":
                         t_calls = chunk_ev.get("tool_calls") or []
@@ -648,8 +940,21 @@ class AgentLoop:
             except Exception as e:
                 err_str = str(e)
                 logger.error("Inference stream error: %s", err_str)
+                self._finalize_trace(trace_id, t_start, step_traces, steps)
                 yield {"type": "error", "message": f"Error during model inference: {err_str}"}
                 return
+
+            inf_latency = round((time.perf_counter() - step_t0) * 1000, 1)
+            p_toks = sum(len(str(m.get("content", ""))) // 4 for m in prepared_messages)
+            r_toks = len("".join(streamed_tokens)) // 4
+            step_traces.append(StepTrace(
+                step=steps,
+                type="inference",
+                name=self.model,
+                latency_ms=inf_latency,
+                tokens=p_toks + r_toks,
+                status="ok",
+            ))
 
             tool_calls = accumulated_tool_calls or response_msg.get("tool_calls") or []
 
@@ -681,6 +986,7 @@ class AgentLoop:
 
             if not tool_calls:
                 final_content = "".join(streamed_tokens).strip()
+                final_content = self._sanitize_final_content(final_content)
                 if not final_content:
                     final_content = "I have processed your request. How else can I assist you?"
                     yield {"type": "token", "delta": final_content}
@@ -694,10 +1000,12 @@ class AgentLoop:
 
                 final_content = re.sub(r"https?://[^\s\)]*?/api/generated_images/", "/api/generated_images/", final_content)
                 self.messages.append({"role": "assistant", "content": final_content})
+                trace = self._finalize_trace(trace_id, t_start, step_traces, steps)
                 yield {
                     "type": "done",
                     "full_text": final_content,
                     "model": self.model,
+                    "trace": trace.to_dict(),
                 }
                 return
 
@@ -729,26 +1037,14 @@ class AgentLoop:
                 else:
                     args = dict(raw_args) if isinstance(raw_args, dict) else {}
 
-                if "path" not in args:
-                    for k in ("file_path", "filename", "file", "filepath", "target_file", "path_to_file"):
-                        if k in args:
-                            args["path"] = args[k]
-                            break
-                if "content" not in args:
-                    for k in ("text", "code", "data", "body"):
-                        if k in args:
-                            args["content"] = args[k]
-                            break
-                if "command" not in args and "cmd" in args:
-                    args["command"] = args["cmd"]
-                if "target" not in args and "old" in args:
-                    args["target"] = args["old"]
-                if "replacement" not in args and "new" in args:
-                    args["replacement"] = args["new"]
+                args = normalize_tool_args(fn_name, args)
 
                 yield {"type": "tool_start", "tool": fn_name, "args": args}
 
+                tool_t0 = time.perf_counter()
+                is_err = False
                 if fn_name not in self.tool_dispatch:
+                    is_err = True
                     tool_output = json.dumps({
                         "status": "error",
                         "message": f"Tool '{fn_name}' is not recognized.",
@@ -759,9 +1055,10 @@ class AgentLoop:
                         tool_output = cancel_payload or "Action cancelled by user."
                     else:
                         func = self.tool_dispatch[fn_name]
-                        try:
-                            res = func(**args)
-                            tool_output = json.dumps(res) if isinstance(res, (dict, list)) else str(res)
+                        res, is_err = self._invoke_tool_safely(func, fn_name, args)
+                        tool_output = json.dumps(res) if isinstance(res, (dict, list)) else str(res)
+
+                        if not is_err:
                             if fn_name in ("search_web", "websearch", "searchinternet", "duckduckgo", "googlesearch"):
                                 for m in re.finditer(r"\[(.*?)\]\(((?:https?|file):\/\/[^\s\)]+)\)", str(tool_output)):
                                     t = m.group(1).strip()
@@ -774,19 +1071,56 @@ class AgentLoop:
                                     from urllib.parse import urlparse
                                     host = urlparse(target_url).netloc or "Web Page"
                                     invoked_web_sources.append({"title": host, "url": target_url})
-                        except Exception as ex:
-                            logger.error("Error executing tool %s: %s", fn_name, ex)
-                            tool_output = json.dumps({
-                                "status": "error",
-                                "message": f"Execution error in '{fn_name}': {ex}",
-                            })
+
+                tool_lat = round((time.perf_counter() - tool_t0) * 1000, 1)
+                step_traces.append(StepTrace(
+                    step=steps,
+                    type="tool_call",
+                    name=fn_name,
+                    latency_ms=tool_lat,
+                    tokens=len(str(tool_output)) // 4,
+                    status="error" if is_err else ("cancelled" if (fn_name in self.tool_dispatch and not authorized) else "ok"),
+                    details={"args_keys": list(args.keys())},
+                ))
+
+                if is_err:
+                    if last_failed_tool == fn_name:
+                        consecutive_tool_errors += 1
+                    else:
+                        consecutive_tool_errors = 1
+                        last_failed_tool = fn_name
+                else:
+                    consecutive_tool_errors = 0
+                    last_failed_tool = ""
 
                 preview = str(tool_output)
                 if len(preview) > 120:
                     preview = preview[:117] + "..."
                 yield {"type": "tool_end", "tool": fn_name, "preview": preview}
 
-                tool_budget = 12000 if fn_name in ("files_read_file", "files_search_files", "files_list_directory", "files_patch_file", "files_run_command", "files_set_workspace") else None
+                if fn_name == "capture_screen" and isinstance(res, dict) and res.get("image_base64"):
+                    if self.messages:
+                        for m in reversed(self.messages):
+                            if m.get("role") == "user":
+                                m.setdefault("images", []).append(res["image_base64"])
+                                break
+                    try:
+                        from src.config import get_config
+                        cfg = get_config()
+                        vis_model = getattr(cfg.llm, "vision_model", "qwen2.5vl:7b")
+                        if vis_model:
+                            self.model = vis_model
+                            if self.client:
+                                self.client.default_model = vis_model
+                    except Exception:
+                        pass
+
+                tool_budget = 12000 if fn_name in (
+                    "files_read_file", "files_search_files", "files_list_directory",
+                    "files_patch_file", "files_run_command", "files_set_workspace",
+                    "notes_read_daily", "read_project_notes", "notes_list_todos",
+                    "calendar_list_events",
+                ) else None
                 safe_output = self.context_manager.compress_tool_result(str(tool_output), max_chars=tool_budget)
 
                 self.messages.append({
@@ -795,6 +1129,16 @@ class AgentLoop:
                     "content": safe_output,
                 })
 
+            if consecutive_tool_errors >= 2:
+                logger.warning("Aborting ReAct stream: tool '%s' failed %d consecutive times.", last_failed_tool, consecutive_tool_errors)
+                abort_msg = f"I encountered repeated errors attempting to execute '{last_failed_tool}'. Please verify the parameters."
+                self.messages.append({"role": "assistant", "content": abort_msg})
+                trace = self._finalize_trace(trace_id, t_start, step_traces, steps)
+                yield {"type": "token", "delta": abort_msg}
+                yield {"type": "done", "full_text": abort_msg, "model": self.model, "trace": trace.to_dict()}
+                return
+
         fallback_msg = f"Agent reached the maximum tool execution limit ({self.max_steps} steps) without completing."
         self.messages.append({"role": "assistant", "content": fallback_msg})
-        yield {"type": "done", "full_text": fallback_msg, "model": self.model}
+        trace = self._finalize_trace(trace_id, t_start, step_traces, steps)
+        yield {"type": "done", "full_text": fallback_msg, "model": self.model, "trace": trace.to_dict()}

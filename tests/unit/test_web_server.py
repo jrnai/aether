@@ -242,7 +242,7 @@ def test_api_briefing_regenerate_success(client):
         mock_ollama_cls.return_value = mock_ollama
 
         mock_service = MagicMock()
-        mock_service.run_briefing_cycle.return_value = ("## 🌅 Morning Briefing\nReady for today!", Path("/fake/note.md"))
+        mock_service.run_briefing_cycle.return_value = ("## Morning Briefing\nReady for today!", Path("/fake/note.md"))
         mock_service_cls.return_value = mock_service
 
         resp = client.post("/api/briefing/regenerate")
@@ -886,3 +886,155 @@ def test_terminal_ws_interactive_stdin(client: TestClient, tmp_path: Path, monke
         combined = "".join(received_chunks)
         assert "Enter choice:" in combined
         assert "Selected: rock" in combined
+
+
+def test_api_weather_endpoint(client: TestClient) -> None:
+    """Verify GET /api/weather returns 200 and structured weather data."""
+    sample_data = {
+        "status": "success",
+        "location": "Kingston, Ontario, Canada",
+        "current": {
+            "temp_c": 19,
+            "temp_f": 66,
+            "condition": "Sunny",
+            "wind_kmph": 14,
+            "wind_dir": "S",
+            "humidity": 55,
+        },
+        "today": {
+            "date": "2026-09-12",
+            "max_c": 27,
+            "min_c": 10,
+            "hourly": [
+                {
+                    "time": "12:00",
+                    "time_label": "12 PM",
+                    "temp_c": 22,
+                    "wind_kmph": 17,
+                    "wind_dir": "S",
+                    "rain_chance": 5,
+                    "condition": "Sunny",
+                }
+            ],
+        },
+    }
+    with patch("src.web.server.fetch_weather_forecast", return_value=sample_data) as mock_fetch:
+        resp = client.get("/api/weather?location=Kingston+Downtown%2C+Ontario")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["status"] == "success"
+        assert data["location"] == "Kingston, Ontario, Canada"
+        assert data["current"]["temp_c"] == 19
+        assert len(data["today"]["hourly"]) == 1
+        mock_fetch.assert_called_once_with(location="Kingston Downtown, Ontario", force_refresh=False)
+
+
+def test_api_weather_location_get_and_post(client: TestClient) -> None:
+    """Verify GET and POST /api/weather/location."""
+    # 1. GET current location
+    resp = client.get("/api/weather/location")
+    assert resp.status_code == 200
+    assert "location" in resp.json()
+
+    # 2. POST empty location validation
+    bad_resp = client.post("/api/weather/location", json={"location": "   "})
+    assert bad_resp.status_code == 400
+
+    # 3. POST new location
+    with patch("src.web.server.fetch_weather_forecast") as mock_fetch:
+        mock_fetch.return_value = {
+            "status": "success",
+            "location": "Toronto, Ontario, Canada",
+            "current": {"temp_c": 20},
+            "today": {"hourly": []},
+        }
+        post_resp = client.post("/api/weather/location", json={"location": "Toronto, Ontario"})
+        assert post_resp.status_code == 200
+        data = post_resp.json()
+        assert data["status"] == "success"
+        assert data["location"] == "Toronto, Ontario"
+        assert data["weather"]["location"] == "Toronto, Ontario, Canada"
+
+    # Reset back to Kingston
+    client.post("/api/weather/location", json={"location": "Kingston Downtown, Ontario"})
+
+
+def test_open_desktop_app_window_passes_user_data_dir() -> None:
+    """Verify open_desktop_app_window passes user-data-dir and isolated app flags."""
+    from src.web.server import open_desktop_app_window
+
+    with patch("os.path.exists", return_value=True), \
+         patch("subprocess.Popen") as mock_popen:
+        mock_proc = MagicMock()
+        mock_proc.pid = 9999
+        mock_popen.return_value = mock_proc
+
+        open_desktop_app_window("http://127.0.0.1:8000", app_mode=True)
+
+        assert mock_popen.called
+        cmd = mock_popen.call_args[0][0]
+        assert "--app=http://127.0.0.1:8000" in cmd
+        assert any("--user-data-dir=" in arg for arg in cmd)
+        assert "--no-first-run" in cmd
+
+
+def test_window_monitor_terminates_server() -> None:
+    """Verify window monitor thread sets should_exit when the app window process closes."""
+    mock_proc = MagicMock()
+    mock_server = MagicMock()
+    mock_server.should_exit = False
+
+    mock_proc.wait.return_value = 0
+
+    def _monitor(proc, srv):
+        try:
+            proc.wait()
+        except Exception:
+            pass
+        srv.should_exit = True
+
+    _monitor(mock_proc, mock_server)
+    assert mock_server.should_exit is True
+
+
+def test_api_calendar_with_query_params(client: TestClient) -> None:
+    """Verify /api/calendar accepts start and end query params for custom ranges."""
+    with patch("src.web.server.list_events") as mock_list, patch("src.web.server.get_free_slots") as mock_slots:
+        mock_list.return_value = [
+            {
+                "id": "evt_test",
+                "title": "Study Group",
+                "start": "2026-09-15T15:00:00Z",
+                "end": "2026-09-15T16:30:00Z",
+                "location": "Library",
+            }
+        ]
+        mock_slots.return_value = []
+
+        resp = client.get("/api/calendar?start=2026-09-01T00:00:00Z&end=2026-09-30T23:59:59Z")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert "events" in data
+        assert len(data["events"]) == 1
+        assert data["events"][0]["title"] == "Study Group"
+        mock_list.assert_called_once_with(
+            start_iso="2026-09-01T00:00:00Z",
+            end_iso="2026-09-30T23:59:59Z",
+        )
+
+
+def test_api_calendar_auth(client: TestClient) -> None:
+    """Verify /api/calendar/auth triggers authentication subprocess."""
+    with patch("src.web.server.GoogleCalendarManager") as mock_mgr_cls, patch("subprocess.Popen") as mock_popen:
+        mock_mgr = MagicMock()
+        mock_mgr_cls.return_value = mock_mgr
+        mock_mgr.is_oauth_configured.return_value = True
+
+        resp = client.post("/api/calendar/auth")
+        assert resp.status_code == 200
+        assert resp.json()["status"] == "success"
+        mock_popen.assert_called_once()
+
+
+
+

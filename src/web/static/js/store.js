@@ -203,12 +203,35 @@ export function showToast(message, type = 'info') {
   }, 4000);
 }
 
+// Helper for KaTeX math rendering
+function renderKaTeXString(latex, isDisplay) {
+  if (!latex || !latex.trim()) return '';
+  const cleanLatex = latex.trim();
+  if (typeof window !== 'undefined' && window.katex && typeof window.katex.renderToString === 'function') {
+    try {
+      return window.katex.renderToString(cleanLatex, {
+        displayMode: isDisplay,
+        throwOnError: false,
+      });
+    } catch (err) {
+      console.debug('KaTeX parse error:', err);
+    }
+  }
+  return `<span class="katex-fallback ${isDisplay ? 'katex-display-fallback' : ''}">${escapeHtml(cleanLatex)}</span>`;
+}
+
 // Markdown parser
 export function renderMarkdown(md) {
   if (!md) return '';
 
   try {
     let processed = md.replace(/^\s*---\s*[\r\n]+[\s\S]*?[\r\n]+---\s*[\r\n]*/, '');
+
+    // Clean up internal tool calls or leaked system tags
+    processed = processed.replace(/<tool_call>[\s\S]*?<\/tool_call>/gi, '');
+    processed = processed.replace(/<tool_response>[\s\S]*?<\/tool_response>/gi, '');
+    processed = processed.replace(/<function_call>[\s\S]*?<\/function_call>/gi, '');
+    processed = processed.replace(/<\/?(?:tool_call|tool_response|function_call)>/gi, '');
 
     // Extract DeepSeek-R1 <think> blocks
     const thinkBlocks = [];
@@ -225,10 +248,40 @@ export function renderMarkdown(md) {
 
     // Extract fenced code blocks
     const codeBlocks = [];
-    processed = processed.replace(/```([a-zA-Z0-9_\-\.]*)\r?\n([\s\S]*?)```/g, (match, lang, code) => {
+    processed = processed.replace(/```([a-zA-Z0-9_\-\.]*)\r?\n([\s\S]*?)```/g, (match, rawLang, code) => {
       const idx = codeBlocks.length;
-      codeBlocks.push(`<pre><code class="language-${lang || 'plaintext'}">${escapeHtml(code.trim())}</code></pre>`);
-      return `@@AETHERCODE${idx}@@`;
+      const lang = (rawLang || '').trim().toLowerCase();
+      const codeText = code.replace(/\r\n/g, '\n').trimEnd();
+      let highlightedCode = '';
+
+      if (typeof window !== 'undefined' && window.hljs) {
+        try {
+          if (lang && window.hljs.getLanguage(lang)) {
+            highlightedCode = window.hljs.highlight(codeText, { language: lang, ignoreIllegals: true }).value;
+          } else {
+            highlightedCode = window.hljs.highlightAuto(codeText).value;
+          }
+        } catch {
+          highlightedCode = escapeHtml(codeText);
+        }
+      } else {
+        highlightedCode = escapeHtml(codeText);
+      }
+
+      const langLabel = lang || 'code';
+      codeBlocks.push(
+        `<div class="code-block-wrapper">` +
+          `<div class="code-block-header">` +
+            `<span class="code-block-lang">${escapeHtml(langLabel)}</span>` +
+            `<button type="button" class="btn-copy-code" onclick="window.copyCodeBlock(this)" title="Copy Code" aria-label="Copy code">` +
+              `<svg class="copy-icon" viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>` +
+              `<span class="copy-text">Copy</span>` +
+            `</button>` +
+          `</div>` +
+          `<pre><code class="hljs language-${escapeHtml(langLabel)}">${highlightedCode}</code></pre>` +
+        `</div>`
+      );
+      return `\n\n@@AETHERCODE${idx}@@\n\n`;
     });
 
     // Extract inline code
@@ -239,9 +292,45 @@ export function renderMarkdown(md) {
       return `@@AETHERINLINE${idx}@@`;
     });
 
-    // Escape HTML
+    // Extract LaTeX Math (Display and Inline)
+    const mathBlocks = [];
+
+    // 1. Display math: $$ ... $$
+    processed = processed.replace(/\$\$([\s\S]*?)\$\$/g, (match, formula) => {
+      const idx = mathBlocks.length;
+      mathBlocks.push({ formula: formula.trim(), display: true });
+      return `\n\n@@AETHERMATH${idx}@@\n\n`;
+    });
+
+    // 2. Display math: \[ ... \]
+    processed = processed.replace(/\\\[([\s\S]*?)\\\]/g, (match, formula) => {
+      const idx = mathBlocks.length;
+      mathBlocks.push({ formula: formula.trim(), display: true });
+      return `\n\n@@AETHERMATH${idx}@@\n\n`;
+    });
+
+    // 3. Inline math: \( ... \)
+    processed = processed.replace(/\\\(([\s\S]*?)\\\)/g, (match, formula) => {
+      const idx = mathBlocks.length;
+      mathBlocks.push({ formula: formula.trim(), display: false });
+      return `@@AETHERMATH${idx}@@`;
+    });
+
+    // 4. Inline math: $ ... $ (skipping currency amounts like $50 or $100 USD)
+    processed = processed.replace(/(?<![\w\$\\])\$([^\s\$](?:[^\$\r\n]*?[^\s\$])?)\$(?![\w\$])/g, (match, formula) => {
+      const trimmed = formula.trim();
+      if (/^[\d,.]+(\s*(?:USD|EUR|GBP|JPY|CAD|AUD|billion|million|k))?$/i.test(trimmed)) {
+        return match;
+      }
+      const idx = mathBlocks.length;
+      mathBlocks.push({ formula: trimmed, display: false });
+      return `@@AETHERMATH${idx}@@`;
+    });
+
+    // Escape HTML of the remaining narrative text
     let html = escapeHtml(processed);
 
+    // Normalize image URLs
     html = html.replace(/https?:\/\/[^\s\)\"\'\<\>]+(\/api\/generated_images\/)/gi, '$1');
 
     // Extract images
@@ -294,39 +383,130 @@ export function renderMarkdown(md) {
       return `@@AETHERLINK${idx}@@`;
     });
 
-    html = html.replace(/(^|[\s(]|&lt;)((?:https?|file):\/\/(?:[^\s()<>"']+|\([^\s()<>"']+\))+[^\s()<>"'.,:;?!\-])(?=[\s)]|&gt;|$)/g, (match, prefix, rawUrl) => {
+    html = html.replace(/(^|[\s(]|&lt;)((?:https?|file):\/\/[^\s()<>"']+[^\s()<>"'.,:;?!\]\)])(?=[\s)]|&gt;|$)/g, (match, prefix, rawUrl) => {
       const cleanUrl = rawUrl.replace(/&amp;/g, '&');
       const idx = linkBlocks.length;
       linkBlocks.push(`<a href="${escapeHtml(cleanUrl)}" target="_blank" rel="noopener noreferrer" class="chat-link" title="${escapeHtml(cleanUrl)}">${cleanUrl}<span class="link-arrow">[link]</span></a>`);
       return `${prefix}@@AETHERLINK${idx}@@`;
     });
 
-    // Headers
+    // Horizontal rules (---, ***, ___)
+    html = html.replace(/^[ \t]*(\*{3,}|-{3,}|_{3,})[ \t]*$/gim, '<hr class="chat-hr">');
+
+    // Headers (h1 through h6)
+    html = html.replace(/^###### (.*$)/gim, '<h6>$1</h6>');
+    html = html.replace(/^##### (.*$)/gim, '<h5>$1</h5>');
+    html = html.replace(/^#### (.*$)/gim, '<h4>$1</h4>');
     html = html.replace(/^### (.*$)/gim, '<h3>$1</h3>');
     html = html.replace(/^## (.*$)/gim, '<h2>$1</h2>');
     html = html.replace(/^# (.*$)/gim, '<h1>$1</h1>');
 
-    // Bold
+    // Bold, strikethrough, and italics
     html = html.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
     html = html.replace(/__(.*?)__/g, '<strong>$1</strong>');
+    html = html.replace(/~~(.*?)~~/g, '<del>$1</del>');
 
-    // Lists
-    const lines = html.split(/\r?\n/);
+    // Process line by line for Tables, Blockquotes/Callouts, Task Lists, and Ordered/Unordered Lists
+    const rawLines = html.split(/\r?\n/);
     const outLines = [];
     let inOl = false;
     let inSubUl = false;
     let inTopUl = false;
+    let inTaskList = false;
 
     let i = 0;
-    while (i < lines.length) {
-      const line = lines[i];
+    while (i < rawLines.length) {
+      const line = rawLines[i];
       const trimmed = line.trim();
 
+      // Check for Markdown Table
+      if (trimmed.includes('|') && i + 1 < rawLines.length) {
+        const nextTrimmed = rawLines[i + 1].trim();
+        if (/^[\s\|:\-]+$/.test(nextTrimmed) && /-/{2,}/.test(nextTrimmed)) {
+          if (inSubUl) { outLines.push('</ul></li>'); inSubUl = false; }
+          if (inOl) { outLines.push('</li></ol>'); inOl = false; }
+          if (inTopUl) { outLines.push('</ul>'); inTopUl = false; }
+          if (inTaskList) { outLines.push('</ul>'); inTaskList = false; }
+
+          const headerCells = trimmed.replace(/^\||\|$/g, '').split('|').map(c => c.trim());
+          const delimCells = nextTrimmed.replace(/^\||\|$/g, '').split('|').map(c => c.trim());
+          const aligns = delimCells.map(d => {
+            if (d.startsWith(':') && d.endsWith(':')) return 'center';
+            if (d.endsWith(':')) return 'right';
+            if (d.startsWith(':')) return 'left';
+            return '';
+          });
+
+          i += 2;
+          const rows = [];
+          while (i < rawLines.length && rawLines[i].trim().includes('|') && rawLines[i].trim().length > 0) {
+            const rowCells = rawLines[i].trim().replace(/^\||\|$/g, '').split('|').map(c => c.trim());
+            rows.push(rowCells);
+            i++;
+          }
+
+          let thHtml = '';
+          headerCells.forEach((h, idx) => {
+            const alignStyle = aligns[idx] ? ` style="text-align:${aligns[idx]}"` : '';
+            thHtml += `<th${alignStyle}>${h}</th>`;
+          });
+
+          let trHtml = '';
+          rows.forEach(row => {
+            let tdHtml = '';
+            row.forEach((c, idx) => {
+              const alignStyle = (idx < aligns.length && aligns[idx]) ? ` style="text-align:${aligns[idx]}"` : '';
+              tdHtml += `<td${alignStyle}>${c}</td>`;
+            });
+            trHtml += `<tr>${tdHtml}</tr>`;
+          });
+
+          outLines.push(
+            `<div class="chat-table-wrapper"><table class="chat-table"><thead><tr>${thHtml}</tr></thead><tbody>${trHtml}</tbody></table></div>`
+          );
+          continue;
+        }
+      }
+
+      // Check for Blockquote or GitHub Callout (> text)
+      if (/^[ \t]*>[ \t]*/.test(line)) {
+        if (inSubUl) { outLines.push('</ul></li>'); inSubUl = false; }
+        if (inOl) { outLines.push('</li></ol>'); inOl = false; }
+        if (inTopUl) { outLines.push('</ul>'); inTopUl = false; }
+        if (inTaskList) { outLines.push('</ul>'); inTaskList = false; }
+
+        const bqLines = [];
+        while (i < rawLines.length && /^[ \t]*>[ \t]*/.test(rawLines[i])) {
+          bqLines.push(rawLines[i].replace(/^[ \t]*>[ \t]?/, ''));
+          i++;
+        }
+
+        const firstLine = bqLines[0] || '';
+        const calloutMatch = firstLine.match(/^\[!(NOTE|TIP|IMPORTANT|WARNING|CAUTION)\]\s*(.*)$/i);
+        if (calloutMatch) {
+          const type = calloutMatch[1].toUpperCase();
+          const restOfFirst = calloutMatch[2];
+          const remainingLines = bqLines.slice(1);
+          if (restOfFirst) remainingLines.unshift(restOfFirst);
+          const bodyHtml = remainingLines.join('<br>');
+          outLines.push(
+            `<div class="chat-callout callout-${type.toLowerCase()}">` +
+              `<div class="chat-callout-header"><span class="callout-badge">${type}</span></div>` +
+              `<div class="chat-callout-body">${bodyHtml}</div>` +
+            `</div>`
+          );
+        } else {
+          outLines.push(`<blockquote><p>${bqLines.join('<br>')}</p></blockquote>`);
+        }
+        continue;
+      }
+
+      // Blank line handling
       if (!trimmed) {
         let nextNonEmpty = null;
-        for (let j = i + 1; j < lines.length; j++) {
-          if (lines[j].trim()) {
-            nextNonEmpty = lines[j].trim();
+        for (let j = i + 1; j < rawLines.length; j++) {
+          if (rawLines[j].trim()) {
+            nextNonEmpty = rawLines[j].trim();
             break;
           }
         }
@@ -338,13 +518,37 @@ export function renderMarkdown(md) {
           else if (inOl) { outLines.push('</li>'); }
           if (inOl) { outLines.push('</ol>'); inOl = false; }
           if (inTopUl) { outLines.push('</ul>'); inTopUl = false; }
+          if (inTaskList) { outLines.push('</ul>'); inTaskList = false; }
           outLines.push('');
           i++;
           continue;
         }
       }
 
+      // Task List items (- [ ] or - [x])
+      const taskMatch = line.match(/^[ \t]*[\*\-][ \t]+\[([ xX])\][ \t]+(.*)$/);
+      if (taskMatch) {
+        if (inTopUl) { outLines.push('</ul>'); inTopUl = false; }
+        if (inOl) { outLines.push('</ol>'); inOl = false; }
+        if (!inTaskList) {
+          outLines.push('<ul class="task-list">');
+          inTaskList = true;
+        }
+        const isChecked = taskMatch[1].toLowerCase() === 'x';
+        const taskText = taskMatch[2];
+        const checkAttr = isChecked ? 'checked disabled' : 'disabled';
+        const textWrapper = isChecked ? `<span class="task-done">${taskText}</span>` : taskText;
+        outLines.push(`<li class="task-list-item"><input type="checkbox" ${checkAttr} class="task-checkbox"> ${textWrapper}</li>`);
+        i++;
+        continue;
+      } else if (inTaskList) {
+        outLines.push('</ul>');
+        inTaskList = false;
+      }
+
+      // Ordered list items (1. item)
       const olMatch = line.match(/^[ \t]*(\d+)\.[ \t]+(.*)$/);
+      // Unordered list items (- item or * item)
       const ulMatch = line.match(/^[ \t]*[\*\-][ \t]+(.*)$/);
 
       if (olMatch) {
@@ -382,6 +586,7 @@ export function renderMarkdown(md) {
     else if (inOl) { outLines.push('</li>'); }
     if (inOl) outLines.push('</ol>');
     if (inTopUl) outLines.push('</ul>');
+    if (inTaskList) outLines.push('</ul>');
 
     html = outLines.join('\n');
 
@@ -389,20 +594,31 @@ export function renderMarkdown(md) {
     html = html.replace(/(^|[^\*])\*([^\*\s\r\n][^\*\r\n]*?[^\*\s\r\n])\*(?!\*)/g, '$1<em>$2</em>');
     html = html.replace(/(^|[^_])_([^_\s\r\n][^_\r\n]*?[^_\s\r\n])_(?!_)/g, '$1<em>$2</em>');
 
-    // Paragraphs
+    // Paragraphs and line breaks
     html = html.replace(/\n\n+/g, '</p><p>');
     html = html.replace(/\n/g, '<br>');
     html = `<p>${html}</p>`;
 
+    // Clean up empty tags and br around block elements
     html = html.replace(/<p>\s*<\/p>/g, '');
-    html = html.replace(/<p>\s*(<(?:ul|ol|li|pre|h1|h2|h3|blockquote|details|div)[^>]*>)/g, '$1');
-    html = html.replace(/(<\/(?:ul|ol|li|pre|h1|h2|h3|blockquote|details|div)>)\s*<\/p>/g, '$1');
-    html = html.replace(/(<(?:ul|ol|pre|blockquote|details|div)[^>]*>)\s*<br\s*\/?>/g, '$1');
-    html = html.replace(/<br\s*\/?>\s*(<\/(?:ul|ol|pre|blockquote|details|div)>)/g, '$1');
-    html = html.replace(/<br\s*\/?>\s*(<(?:ul|ol|li|pre|h1|h2|h3|blockquote|details|div)[^>]*>)/g, '$1');
-    html = html.replace(/(<\/(?:ul|ol|li|pre|h1|h2|h3|blockquote|details|div)>)\s*<br\s*\/?>/g, '$1');
+    html = html.replace(/<p>\s*(<(?:ul|ol|li|pre|h1|h2|h3|h4|h5|h6|blockquote|details|div|hr|table)[^>]*>)/g, '$1');
+    html = html.replace(/(<\/(?:ul|ol|li|pre|h1|h2|h3|h4|h5|h6|blockquote|details|div|table)>\s*<hr[^>]*>)\s*<\/p>/g, '$1');
+    html = html.replace(/(<\/(?:ul|ol|li|pre|h1|h2|h3|h4|h5|h6|blockquote|details|div|table)>)\s*<\/p>/g, '$1');
+    html = html.replace(/(<(?:ul|ol|pre|blockquote|details|div|table)[^>]*>)\s*<br\s*\/?>/g, '$1');
+    html = html.replace(/<br\s*\/?>\s*(<\/(?:ul|ol|pre|blockquote|details|div|table)>)/g, '$1');
+    html = html.replace(/<br\s*\/?>\s*(<(?:ul|ol|li|pre|h1|h2|h3|h4|h5|h6|blockquote|details|div|table)[^>]*>)/g, '$1');
+    html = html.replace(/(<\/(?:ul|ol|li|pre|h1|h2|h3|h4|h5|h6|blockquote|details|div|table)>)\s*<br\s*\/?>/g, '$1');
     html = html.replace(/<br\s*\/?>\s*<\/li>/g, '</li>');
     html = html.replace(/<p>\s*<\/p>/g, '');
+
+    // Restore Math via KaTeX
+    mathBlocks.forEach((item, idx) => {
+      const rendered = renderKaTeXString(item.formula, item.display);
+      const wrapper = item.display
+        ? `<div class="chat-math-block">${rendered}</div>`
+        : `<span class="chat-math-inline">${rendered}</span>`;
+      html = html.replaceAll(`@@AETHERMATH${idx}@@`, () => wrapper);
+    });
 
     // Restore stashed blocks
     thinkBlocks.forEach((thinkHtml, idx) => {

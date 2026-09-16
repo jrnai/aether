@@ -49,3 +49,16 @@ logging:
   level: "INFO"                              # "DEBUG", "INFO", "WARNING", "ERROR"
   log_to_stdout: true
   audit_to_db: true                          # Record all tool calls and approvals in aether.db
+
+# Hands-Free Voice Activation
+voice:
+  enabled: true                              # Set to true to start voice listening automatically
+  wake_word: "aether"                        # "aether", "hey aether", "hey jarvis", "alexa"
+  threshold: 0.5                             # Wake word detection sensitivity (0.0 to 1.0)
+  stt_model: "base.en"                       # Local faster-whisper model ("tiny.en", "base.en", "small.en")
+  tts_enabled: true                          # Speak responses out loud
+  tts_voice: "en-US-AriaNeural"              # Natural neural voice ("en-US-AriaNeural", "en-US-GuyNeural", "en-US-JennyNeural")
+  silence_timeout_seconds: 1.2               # Silence duration to detect end of speech
+  max_recording_seconds: 15.0                # Maximum voice prompt duration
+  pop_window_on_wake: false                  # Keep false so ambient voice activation never steals focus or blocks the view
+

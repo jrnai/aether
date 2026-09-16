@@ -323,6 +323,26 @@ def test_agent_loop_sanitizes_generated_image_url() -> None:
     assert "![](/api/generated_images/test_image.png)" in res
 
 
+def test_agent_loop_prunes_hallucinated_kwargs() -> None:
+    """Agent loop must prune hallucinated kwargs that do not exist in tool signatures."""
+    captured = {}
+    def sample_tool(title: str, start_iso: str = "") -> dict:
+        captured["title"] = title
+        captured["start_iso"] = start_iso
+        return {"status": "success", "title": title}
+
+    loop = AgentLoop()
+    # Call with hallucinated kwargs that do not exist in sample_tool
+    res, is_err = loop._invoke_tool_safely(
+        sample_tool,
+        "sample_tool",
+        {"title": "Task", "start_iso": "10:00", "duration_minutes": 30, "fake_param": 123},
+    )
+    assert not is_err
+    assert res["status"] == "success"
+    assert captured == {"title": "Task", "start_iso": "10:00"}
+
+
 
 
 

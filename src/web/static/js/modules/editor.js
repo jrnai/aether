@@ -46,7 +46,7 @@ export async function refreshFilesTreeBtn() {
 export async function loadFilesTree(rootPath = '.') {
   const container = document.getElementById('file-tree-container');
   if (!container) return;
-  container.innerHTML = '<div class="loading-spinner">Loading workspace files...</div>';
+  container.innerHTML = '<div class="skeleton skeleton-line"></div><div class="skeleton skeleton-line short"></div><div class="skeleton skeleton-line shorter"></div>';
 
   try {
     const res = await fetch(`/api/files/tree?path=${encodeURIComponent(rootPath)}&depth=4`);
@@ -94,7 +94,9 @@ export function buildTreeNode(node, parentEl, level) {
   const isDir = node.type === 'directory';
   const isExpanded = expandedFolders.has(node.path);
 
-  const row = document.createElement('div');
+  const row = document.createElement('button');
+  row.type = 'button';
+  row.role = 'treeitem';
   row.className = `tree-row ${activeEditorPath === node.path ? 'active' : ''}`;
   row.style.paddingLeft = `${0.5 + level * 0.85}rem`;
 
@@ -247,7 +249,7 @@ export function onFileSearchInput(val) {
 
     const container = document.getElementById('file-tree-container');
     if (!container) return;
-    container.innerHTML = '<div class="loading-spinner">Searching...</div>';
+    container.innerHTML = '<div class="skeleton skeleton-line"></div><div class="skeleton skeleton-line short"></div><div class="skeleton skeleton-line shorter"></div>';
 
     try {
       const res = await fetch(`/api/files/search?q=${encodeURIComponent(q)}&content=${isGrepSearch}`);

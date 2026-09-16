@@ -1,0 +1,212 @@
+[
+  {
+    "id": "param-01",
+    "function": "files_read_file",
+    "raw_args": {"file_path": "src/web/server.py"},
+    "expected_key": "path",
+    "expected_value": "src/web/server.py"
+  },
+  {
+    "id": "param-02",
+    "function": "files_read_file",
+    "raw_args": {"filename": "config.yaml"},
+    "expected_key": "path",
+    "expected_value": "config.yaml"
+  },
+  {
+    "id": "param-03",
+    "function": "files_read_file",
+    "raw_args": {"file": "README.md"},
+    "expected_key": "path",
+    "expected_value": "README.md"
+  },
+  {
+    "id": "param-04",
+    "function": "files_read_file",
+    "raw_args": {"filepath": "docs/adr/ADR-001.md"},
+    "expected_key": "path",
+    "expected_value": "docs/adr/ADR-001.md"
+  },
+  {
+    "id": "param-05",
+    "function": "files_write_file",
+    "raw_args": {"target_file": "notes/todo.txt", "text": "buy milk"},
+    "expected_key": "path",
+    "expected_value": "notes/todo.txt"
+  },
+  {
+    "id": "param-06",
+    "function": "files_write_file",
+    "raw_args": {"path_to_file": "dist/bundle.js", "code": "console.log(1);"},
+    "expected_key": "path",
+    "expected_value": "dist/bundle.js"
+  },
+  {
+    "id": "param-07",
+    "function": "files_write_file",
+    "raw_args": {"path": "src/app.py", "body": "import os"},
+    "expected_key": "content",
+    "expected_value": "import os"
+  },
+  {
+    "id": "param-08",
+    "function": "files_write_file",
+    "raw_args": {"path": "data.json", "data": "{\"active\": true}"},
+    "expected_key": "content",
+    "expected_value": "{\"active\": true}"
+  },
+  {
+    "id": "param-09",
+    "function": "runcommand",
+    "raw_args": {"cmd": "pytest tests/unit"},
+    "expected_key": "command",
+    "expected_value": "pytest tests/unit"
+  },
+  {
+    "id": "param-10",
+    "function": "terminalcommand",
+    "raw_args": {"cmd": "git status"},
+    "expected_key": "command",
+    "expected_value": "git status"
+  },
+  {
+    "id": "param-11",
+    "function": "files_patch_file",
+    "raw_args": {"path": "main.py", "old": "def old():", "new": "def new():"},
+    "expected_key": "target",
+    "expected_value": "def old():"
+  },
+  {
+    "id": "param-12",
+    "function": "files_patch_file",
+    "raw_args": {"path": "main.py", "old": "def old():", "new": "def new():"},
+    "expected_key": "replacement",
+    "expected_value": "def new():"
+  },
+  {
+    "id": "param-13",
+    "function": "notes_add_todo",
+    "raw_args": {"todo": "Prepare board slides"},
+    "expected_key": "text",
+    "expected_value": "Prepare board slides"
+  },
+  {
+    "id": "param-14",
+    "function": "notes_add_todo",
+    "raw_args": {"item": "Buy groceries"},
+    "expected_key": "text",
+    "expected_value": "Buy groceries"
+  },
+  {
+    "id": "param-15",
+    "function": "notes_add_todo",
+    "raw_args": {"description": "Fix memory leak in websocket"},
+    "expected_key": "text",
+    "expected_value": "Fix memory leak in websocket"
+  },
+  {
+    "id": "param-16",
+    "function": "notes_add_todo",
+    "raw_args": {"title": "Call accountant"},
+    "expected_key": "text",
+    "expected_value": "Call accountant"
+  },
+  {
+    "id": "param-17",
+    "function": "notes_add_todo",
+    "raw_args": {"tasks": "Submit expense receipts"},
+    "expected_key": "text",
+    "expected_value": "Submit expense receipts"
+  },
+  {
+    "id": "param-18",
+    "function": "calendar_create_event",
+    "raw_args": {"summary": "Product Strategy Sync", "start": "2026-09-20T14:00:00Z"},
+    "expected_key": "title",
+    "expected_value": "Product Strategy Sync"
+  },
+  {
+    "id": "param-19",
+    "function": "calendar_create_event",
+    "raw_args": {"name": "Dentist Appointment", "start": "2026-09-21T09:00:00Z"},
+    "expected_key": "title",
+    "expected_value": "Dentist Appointment"
+  },
+  {
+    "id": "param-20",
+    "function": "calendar_create_event",
+    "raw_args": {"event": "1:1 with Alex", "start": "2026-09-21T11:00:00Z"},
+    "expected_key": "title",
+    "expected_value": "1:1 with Alex"
+  },
+  {
+    "id": "param-21",
+    "function": "calendar_create_event",
+    "raw_args": {"activity": "Gym Session", "start": "2026-09-22T07:00:00Z"},
+    "expected_key": "title",
+    "expected_value": "Gym Session"
+  },
+  {
+    "id": "param-22",
+    "function": "calendar_create_event",
+    "raw_args": {"title": "Architecture Review", "startTime": "2026-09-23T15:00:00Z"},
+    "expected_key": "start_iso",
+    "expected_value": "2026-09-23T15:00:00Z"
+  },
+  {
+    "id": "param-23",
+    "function": "calendar_create_event",
+    "raw_args": {"title": "Design Sprint", "start_time": "2026-09-23T10:00:00Z"},
+    "expected_key": "start_iso",
+    "expected_value": "2026-09-23T10:00:00Z"
+  },
+  {
+    "id": "param-24",
+    "function": "calendar_create_event",
+    "raw_args": {"title": "Design Sprint", "endTime": "2026-09-23T12:00:00Z"},
+    "expected_key": "end_iso",
+    "expected_value": "2026-09-23T12:00:00Z"
+  },
+  {
+    "id": "param-25",
+    "function": "calendar_create_event",
+    "raw_args": {"title": "Design Sprint", "end_date": "2026-09-23T12:00:00Z"},
+    "expected_key": "end_iso",
+    "expected_value": "2026-09-23T12:00:00Z"
+  },
+  {
+    "id": "param-26",
+    "function": "calendar_list_events",
+    "raw_args": {"date_str": "2026-09-25"},
+    "expected_key": "date",
+    "expected_value": "2026-09-25"
+  },
+  {
+    "id": "param-27",
+    "function": "calendar_list_events",
+    "raw_args": {"day": "2026-09-26"},
+    "expected_key": "date",
+    "expected_value": "2026-09-26"
+  },
+  {
+    "id": "param-28",
+    "function": "calendar_list_events",
+    "raw_args": {"date_iso": "2026-09-27"},
+    "expected_key": "date",
+    "expected_value": "2026-09-27"
+  },
+  {
+    "id": "param-29",
+    "function": "calendar_get_free_slots",
+    "raw_args": {"date": "2026-09-28", "duration": 45},
+    "expected_key": "duration_minutes",
+    "expected_value": 45
+  },
+  {
+    "id": "param-30",
+    "function": "calendar_create_event",
+    "raw_args": {"title": "Sync", "text": "Sync", "content": "Sync meeting notes"},
+    "expected_key": "title",
+    "expected_value": "Sync"
+  }
+]

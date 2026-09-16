@@ -67,6 +67,64 @@ export function initChatMediaHandlers() {
       }
     }
   });
+
+  window.addEventListener('keydown', (e) => {
+    if ((e.ctrlKey || e.metaKey) && e.shiftKey && (e.key === 'S' || e.key === 's')) {
+      e.preventDefault();
+      snapDesktopScreen();
+    }
+  });
+}
+
+export async function snapDesktopScreen() {
+  const snapBtn = document.getElementById('btn-snap-screen');
+  const chatInput = document.getElementById('chat-input');
+  if (snapBtn) {
+    snapBtn.disabled = true;
+    snapBtn.classList.add('loading');
+  }
+  try {
+    const res = await fetch('/api/screen/capture', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ max_dimension: 1280, quality: 85 }),
+    });
+    if (!res.ok) {
+      throw new Error(`HTTP ${res.status}`);
+    }
+    const data = await res.json();
+    if (data.status !== 'success' || !data.image_base64) {
+      throw new Error(data.message || 'Capture failed');
+    }
+
+    const timestamp = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+    const winTitle = data.active_window || 'Desktop';
+    const label = `Screen (${winTitle.slice(0, 30)} - ${timestamp})`;
+
+    stagedChatImages.push({
+      base64: data.image_base64,
+      dataUrl: data.data_url || `data:image/jpeg;base64,${data.image_base64}`,
+      name: label,
+      activeWindow: winTitle,
+    });
+
+    renderStagedImagePreview();
+    showToast(`Captured screen (${winTitle})`, 'info');
+    if (chatInput) {
+      if (!chatInput.value.trim()) {
+        chatInput.value = 'What is on my screen?';
+      }
+      chatInput.focus();
+    }
+  } catch (err) {
+    console.error('Snap screen failed:', err);
+    showToast(`Failed to capture screen: ${err.message || err}`, 'error');
+  } finally {
+    if (snapBtn) {
+      snapBtn.disabled = false;
+      snapBtn.classList.remove('loading');
+    }
+  }
 }
 
 export function triggerImageAttachment() {
@@ -213,10 +271,13 @@ export async function sendChatMessage() {
     const textEl = aiBubble.querySelector('.bubble-text');
     let accumulatedText = '';
     let modelUsed = hasImages ? 'qwen2.5vl:7b' : 'qwen2.5:7b-instruct';
+    let traceObj = null;
 
     const reader = res.body.getReader();
     const decoder = new TextDecoder('utf-8');
     let buffer = '';
+
+    let renderScheduled = false;
 
     while (true) {
       const { done, value } = await reader.read();
@@ -230,39 +291,51 @@ export async function sendChatMessage() {
         const trimmed = line.trim();
         if (!trimmed.startsWith('data:')) continue;
         const jsonStr = trimmed.slice(5).trim();
-        if (!jsonStr) continue;
+        if (!jsonStr || jsonStr === '[DONE]') continue;
 
+        let ev;
         try {
-          const ev = JSON.parse(jsonStr);
-
-          if (ev.type === 'token') {
-            accumulatedText += ev.delta;
-            if (textEl) {
-              textEl.innerHTML = renderMarkdown(accumulatedText) + '<span class="chat-cursor-pulse"></span>';
-              chatContainer.scrollTop = chatContainer.scrollHeight;
-            }
-          } else if (ev.type === 'tool_start') {
-            if (textEl) {
-              const toolName = ev.tool || 'tool';
-              textEl.innerHTML = renderMarkdown(accumulatedText) + `<div class="chat-tool-indicator active">[Executing ${escapeHtml(toolName)}...]</div>`;
-              chatContainer.scrollTop = chatContainer.scrollHeight;
-            }
-          } else if (ev.type === 'tool_end') {
-            if (textEl) {
-              const toolName = ev.tool || 'tool';
-              textEl.innerHTML = renderMarkdown(accumulatedText) + `<div class="chat-tool-indicator">[Completed ${escapeHtml(toolName)}]</div>`;
-              chatContainer.scrollTop = chatContainer.scrollHeight;
-            }
-          } else if (ev.type === 'clear_tokens') {
-            accumulatedText = '';
-          } else if (ev.type === 'error') {
-            throw new Error(ev.message || 'Stream error');
-          } else if (ev.type === 'done') {
-            if (ev.full_text) accumulatedText = ev.full_text;
-            if (ev.model) modelUsed = ev.model;
-          }
+          ev = JSON.parse(jsonStr);
         } catch (parseErr) {
           console.debug('Failed parsing SSE chunk:', parseErr, jsonStr);
+          continue;
+        }
+
+        if (ev.type === 'token') {
+          accumulatedText += ev.delta;
+          if (textEl && !renderScheduled) {
+            renderScheduled = true;
+            requestAnimationFrame(() => {
+              renderScheduled = false;
+              if (textEl) {
+                textEl.innerHTML = renderMarkdown(accumulatedText) + '<span class="chat-cursor-pulse"></span>';
+                chatContainer.scrollTop = chatContainer.scrollHeight;
+              }
+            });
+          }
+        } else if (ev.type === 'tool_start') {
+          if (textEl) {
+            const toolName = ev.tool || 'tool';
+            textEl.innerHTML = renderMarkdown(accumulatedText) + `<div class="chat-tool-indicator active">[Executing ${escapeHtml(toolName)}...]</div>`;
+            chatContainer.scrollTop = chatContainer.scrollHeight;
+          }
+        } else if (ev.type === 'tool_end') {
+          if (textEl) {
+            const toolName = ev.tool || 'tool';
+            textEl.innerHTML = renderMarkdown(accumulatedText) + `<div class="chat-tool-indicator">[Completed ${escapeHtml(toolName)}]</div>`;
+            chatContainer.scrollTop = chatContainer.scrollHeight;
+          }
+        } else if (ev.type === 'clear_tokens') {
+          accumulatedText = '';
+          if (textEl) {
+            textEl.innerHTML = '<span class="chat-cursor-pulse"></span>';
+          }
+        } else if (ev.type === 'error') {
+          throw new Error(ev.message || 'Stream error');
+        } else if (ev.type === 'done') {
+          if (ev.full_text) accumulatedText = ev.full_text;
+          if (ev.model) modelUsed = ev.model;
+          if (ev.trace) traceObj = ev.trace;
         }
       }
     }
@@ -271,11 +344,40 @@ export async function sendChatMessage() {
       textEl.removeAttribute('style');
       let rendered = renderMarkdown(accumulatedText || 'No response received.');
       rendered += `<div class="chat-model-tag">Generated with <b>${escapeHtml(modelUsed)}</b></div>`;
+      if (traceObj) {
+        rendered += renderTraceInspectorHtml(traceObj);
+      }
       textEl.innerHTML = rendered;
     }
   } catch (err) {
     const textEl = aiBubble.querySelector('.bubble-text');
-    if (textEl) {
+    let fallbackSuccess = false;
+
+    // Fallback: If streaming failed and no tokens were received, try standard /api/chat endpoint
+    if (!accumulatedText) {
+      try {
+        const fallbackRes = await fetch('/api/chat', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            message: message || (hasImages ? 'Describe and analyze the attached image in detail.' : ''),
+            images: imagesToSend.map((img) => img.base64),
+            mode: hasImages ? 'vision' : 'auto',
+          }),
+        });
+        if (fallbackRes.ok) {
+          const fbData = await fallbackRes.json();
+          if (fbData && fbData.status === 'success' && fbData.response) {
+            let rendered = renderMarkdown(fbData.response);
+            rendered += `<div class="chat-model-tag">Generated with <b>${escapeHtml(fbData.model_used || 'fallback')}</b></div>`;
+            if (textEl) textEl.innerHTML = rendered;
+            fallbackSuccess = true;
+          }
+        }
+      } catch (_) {}
+    }
+
+    if (!fallbackSuccess && textEl) {
       textEl.removeAttribute('style');
       textEl.innerHTML = `<span style="color:#EF4444;">Error contacting Aether: ${escapeHtml(err.message || String(err))}. Please verify the server is running.</span>`;
     }
@@ -353,3 +455,53 @@ export async function clearChatHistory() {
     showToast(`Error clearing chat: ${err.message}`, 'error');
   }
 }
+
+export function toggleTraceDrawer(traceId) {
+  const drawer = document.getElementById(`trace-drawer-${traceId}`);
+  if (!drawer) return;
+  drawer.style.display = drawer.style.display === 'none' ? 'block' : 'none';
+}
+
+export function renderTraceInspectorHtml(trace) {
+  if (!trace || !trace.trace_id) return '';
+  const latSec = ((trace.total_latency_ms || 0) / 1000).toFixed(2);
+  const stepsCount = trace.step_count || (trace.steps ? trace.steps.length : 1);
+  const tokensCount = trace.total_tokens || 0;
+  const traceId = escapeHtml(trace.trace_id);
+
+  let stepsTimelineHtml = '';
+  if (trace.steps && Array.isArray(trace.steps)) {
+    stepsTimelineHtml = trace.steps.map((st, idx) => {
+      const typeLabel = st.type === 'tool_call' ? `Tool: ${st.name}` : (st.type === 'inference' ? 'Reasoning & Inference' : st.type);
+      const badgeClass = st.status === 'error' ? 'status-err' : (st.status === 'cancelled' ? 'status-warn' : 'status-ok');
+      return `
+        <div class="trace-step-row">
+          <span class="trace-step-num">#${idx + 1}</span>
+          <span class="trace-step-type ${badgeClass}">${escapeHtml(typeLabel)}</span>
+          <span class="trace-step-metric">${st.latency_ms || 0}ms</span>
+          <span class="trace-step-metric">${st.tokens || 0} tok</span>
+        </div>
+      `;
+    }).join('');
+  }
+
+  return `
+    <div class="trace-inspector-container">
+      <button type="button" class="trace-badge-btn" onclick="toggleTraceDrawer('${traceId}')" title="Inspect execution trace telemetry" aria-label="Toggle execution trace">
+        <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
+        <span>Trace: ${latSec}s · ${tokensCount} tok · ${stepsCount} ${stepsCount === 1 ? 'step' : 'steps'}</span>
+        <span class="trace-chevron">▼</span>
+      </button>
+      <div id="trace-drawer-${traceId}" class="trace-drawer" style="display: none;">
+        <div class="trace-drawer-header">
+          <span>Execution Trace <span class="trace-id-pill">${traceId}</span></span>
+          <span class="trace-model-pill">${escapeHtml(trace.model || 'local')}</span>
+        </div>
+        <div class="trace-timeline-list">
+          ${stepsTimelineHtml}
+        </div>
+      </div>
+    </div>
+  `;
+}
+

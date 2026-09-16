@@ -38,7 +38,7 @@ export async function fetchNews(force = false) {
   }
 
   if (container && (!allNewsItems || allNewsItems.length === 0)) {
-    container.innerHTML = '<div class="loading-spinner">Loading tech & AI headlines...</div>';
+    container.innerHTML = '<div class="skeleton skeleton-line"></div><div class="skeleton skeleton-line"></div><div class="skeleton skeleton-line short"></div><div class="skeleton skeleton-line"></div><div class="skeleton skeleton-line shorter"></div>';
   }
 
   try {
@@ -147,80 +147,23 @@ export function renderNewsGrid() {
       const sourceLabel = item.source || (isHN ? 'Hacker News' : 'Tech News');
 
       const cat = (item.category || 'tech').toLowerCase();
-      let catBadge = '<span class="news-category-badge category-tech">Tech</span>';
-      if (cat === 'ai_ml') catBadge = '<span class="news-category-badge category-ai">AI & ML</span>';
-      else if (cat === 'dev_tools') catBadge = '<span class="news-category-badge category-tools">Tools</span>';
-      else if (cat === 'research') catBadge = '<span class="news-category-badge category-research">Research</span>';
-
       let domain = 'news.ycombinator.com';
       try {
         if (item.url) domain = new URL(item.url).hostname.replace(/^www\./, '');
       } catch (_) {}
 
-      const wordCount = (item.summary ? item.summary.split(/\s+/).length : 0) + (item.title ? item.title.split(/\s+/).length : 0);
-      const readMin = Math.max(1, Math.ceil(wordCount / 35));
-
-      let mediaHtml = '';
-      const hasRealImage = Boolean(item.image_url && !item.image_url.includes('google.com/s2/favicons') && !item.image_url.includes('favicon'));
-      if (hasRealImage) {
-        mediaHtml = `
-          <div class="news-item-media">
-            <img src="${escapeHtml(item.image_url)}" alt="${escapeHtml(item.title)}" class="news-item-img" loading="lazy">
-            <div class="news-media-overlay"></div>
-          </div>
-        `;
-      } else {
-        mediaHtml = `
-          <div class="news-item-media news-item-fallback-banner banner-${cat}">
-            <div class="fallback-favicon-box">
-              <img src="https://www.google.com/s2/favicons?domain=${encodeURIComponent(domain)}&sz=128" alt="${escapeHtml(sourceLabel)}" class="fallback-favicon-img" onerror="this.style.display='none'">
-            </div>
-            <span class="fallback-domain-text">${escapeHtml(domain)}</span>
-          </div>
-        `;
-      }
-
-      let metricsHtml = '';
-      if (isHN || item.score || item.comments_count) {
-        const score = item.score ? `<span class="news-metric-score" title="Upvotes">[+${item.score}]</span>` : '';
-        const hnDiscussionUrl = isHN && item.id && /^\d+$/.test(String(item.id)) ? `https://news.ycombinator.com/item?id=${item.id}` : item.url;
-        const comments =
-          item.comments_count !== undefined && item.comments_count !== null
-            ? `<a href="${escapeHtml(hnDiscussionUrl)}" target="_blank" rel="noopener noreferrer" class="news-metric-comments" title="View discussion comments">${item.comments_count} comments</a>`
-            : '';
-        metricsHtml = `<div class="news-item-metrics">${score}${comments}</div>`;
-      }
-
-      const relativeTime = formatRelativeTime(item.published_at);
-      const authorOrPublisher = item.author ? escapeHtml(item.author) : sourceLabel;
-      const snippetHtml = item.summary ? `<p class="news-item-snippet">${escapeHtml(item.summary)}</p>` : '';
+      const faviconUrl = `https://www.google.com/s2/favicons?domain=${encodeURIComponent(domain)}&sz=16`;
+      const title = escapeHtml(item.title || '(No title)');
+      const url = escapeHtml(item.url || '#');
+      const timeAgo = formatRelativeTime(item.published_at);
+      const category = cat === 'ai_ml' ? 'AI' : cat === 'dev_tools' ? 'Tools' : cat === 'research' ? 'Research' : 'Tech';
 
       return `
-        <div class="news-item-card">
-          ${mediaHtml}
-          <div class="news-item-body">
-            <div class="news-item-top">
-              <div style="display: flex; align-items: center; gap: 0.4rem; flex-wrap: wrap;">
-                ${catBadge}
-                <span class="news-item-source-badge ${badgeClass}">${escapeHtml(sourceLabel)}</span>
-              </div>
-              <div style="display: flex; align-items: center; gap: 0.5rem;">
-                <span class="news-read-time">${readMin}m read</span>
-                ${metricsHtml}
-              </div>
-            </div>
-            <h3 class="news-item-title">
-              <a href="${escapeHtml(item.url)}" target="_blank" rel="noopener noreferrer" class="news-item-link" title="${escapeHtml(item.title)}">
-                ${escapeHtml(item.title)}
-                <span class="news-link-icon">[link]</span>
-              </a>
-            </h3>
-            ${snippetHtml}
-            <div class="news-item-footer">
-              <span class="news-item-author" title="${authorOrPublisher}">by ${authorOrPublisher}</span>
-              <span class="news-item-time">${relativeTime}</span>
-            </div>
-          </div>
+        <div class="news-item-row">
+          <img class="news-source-icon" src="${faviconUrl}" alt="" width="16" height="16">
+          <a class="news-headline" href="${url}" target="_blank" rel="noopener">${title}</a>
+          <span class="news-meta">${timeAgo}</span>
+          <span class="news-tag">${category}</span>
         </div>
       `;
     })

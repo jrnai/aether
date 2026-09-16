@@ -10,7 +10,7 @@ readme = "README.md"
 requires-python = ">=3.11"
 license = { text = "MIT" }
 authors = [
-    { name = "Aether Team" }
+    { name = "Junn Rong", email = "naijunnrong@gmail.com" }
 ]
 dependencies = [
     "fastmcp>=0.4.0",
@@ -47,6 +47,12 @@ vector = [
 gcal = [
     "google-api-python-client>=2.100.0",
     "google-auth-oauthlib>=1.2.0"
+]
+voice = [
+    "sounddevice>=0.5.0",
+    "openwakeword>=0.6.0",
+    "faster-whisper>=1.0.0",
+    "edge-tts>=7.0.0"
 ]
 
 [project.scripts]

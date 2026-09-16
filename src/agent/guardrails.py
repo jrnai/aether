@@ -1,12 +1,50 @@
 """Safety guard and Human-in-the-Loop (HITL) approval interceptor."""
 import json
 import logging
+import re
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any
 
 logger = logging.getLogger("aether.guardrails")
+
+PROMPT_INJECTION_PATTERNS: list[str] = [
+    r"ignore\s+(all\s+|any\s+|previous\s+|prior\s+|above\s+)*(instructions|directives|rules|prompts)",
+    r"disregard\s+(all\s+|any\s+|previous\s+|prior\s+|above\s+)*(instructions|directives|rules|prompts)",
+    r"forget\s+(your\s+|all\s+|previous\s+|prior\s+)*(instructions|directives|rules|training)",
+    r"system\s+override",
+    r"admin\s+override",
+    r"developer\s+mode\s*(enabled|activate|active|on)",
+    r"system\s+prompt\s*(leak|dump|reveal|print|expose|output)",
+    r"output\s+your\s+system\s+prompt",
+    r"print\s+your\s+instructions",
+    r"<\s*\|\s*im_start\s*\|\s*>\s*system",
+    r"<\s*\|\s*im_end\s*\|\s*>",
+    r"\[INST\]\s*system",
+    r"dan\s+(\d+\.\d+|mode)",
+    r"\bjailbreak\b",
+    r"bypass\s+(all\s+)*(safety|guardrails|filters|rules)",
+    r"pretend\s+you\s+(are\s+|have\s+)(no\s+constraints|unrestricted|unfiltered)",
+    r"hidden\s+instruction\s*:\s*",
+    r"secret\s+override\s*:\s*",
+    r"you\s+are\s+now\s+(an\s+unrestricted|in\s+god\s+mode)",
+]
+
+
+def detect_prompt_injection(text: str) -> tuple[bool, str | None]:
+    """Scan untrusted input text for known indirect prompt injection patterns.
+
+    Returns:
+        (is_injection, matched_pattern_or_reason)
+    """
+    if not text:
+        return False, None
+    lower = text.lower()
+    for pattern in PROMPT_INJECTION_PATTERNS:
+        if re.search(pattern, lower):
+            return True, f"Prompt injection signature detected matching pattern: '{pattern}'"
+    return False, None
 
 
 @dataclass

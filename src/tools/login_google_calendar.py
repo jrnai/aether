@@ -80,7 +80,15 @@ def show_status(manager: GoogleCalendarManager) -> None:
     creds_status = "[green]Found[/green]" if has_creds else "[dim]Not needed (Only for Method 2: 2-Way writing)[/dim]"
     table.add_row("credentials.json (Method 2)", creds_status, str(manager.get_credentials_path()))
 
-    auth_status = "[green]Connected[/green]" if is_logged_in else "[dim]Not needed (Only for Method 2: 2-Way writing)[/dim]"
+    if is_logged_in:
+        auth_status = "[bold green]Connected (Valid Token)[/bold green]"
+    elif manager.token_path.exists():
+        auth_status = "[bold red]EXPIRED / REVOKED (Re-authentication required)[/bold red]"
+    elif has_creds:
+        auth_status = "[bold yellow]Not Logged In (Run script to authenticate)[/bold yellow]"
+    else:
+        auth_status = "[dim]Not configured (Only for Method 2: 2-Way writing)[/dim]"
+
     table.add_row("Google OAuth2 Token (Method 2)", auth_status, str(manager.token_path))
 
     console.print(table)
@@ -195,6 +203,18 @@ def main() -> None:
             f.write(creds.to_json())
 
         console.print(f"[green][OK][/green] Successfully authenticated! Token saved to [cyan]{manager.token_path}[/cyan]\n")
+
+        # Automatically sync any local events created while offline or before login
+        try:
+            from src.servers.calendar_server import load_events, sync_local_events_to_google
+            unsynced = [e for e in load_events() if e.get("id", "").startswith("evt_")]
+            if unsynced:
+                console.print(f"[cyan][*][/cyan] Found {len(unsynced)} pending local event(s) scheduled offline. Syncing to Google Calendar...")
+                sync_res = sync_local_events_to_google()
+                console.print(f"[green][OK][/green] {sync_res.get('message')}\n")
+        except Exception as sync_err:
+            console.print(f"[yellow][!][/yellow] Post-login sync check skipped: {sync_err}\n")
+
         show_status(manager)
     except Exception as e:
         console.print(f"[red][ERROR][/red] Authentication flow failed: {e}")

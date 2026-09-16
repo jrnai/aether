@@ -128,6 +128,7 @@ def main() -> None:
     parser.add_argument("--no-web", action="store_true", help="Do not automatically launch web app on startup")
     parser.add_argument("--web", action="store_true", help="Automatically launch web app on briefing completion")
     parser.add_argument("--schedule", type=str, default="07:30", help="Time of day to run briefing in HH:MM format (default: 07:30)")
+    parser.add_argument("--voice", action="store_true", help="Launch local voice activation listener alongside daemon")
     args = parser.parse_args()
 
     service = BriefingService()
@@ -200,6 +201,15 @@ def main() -> None:
         minute = int(parts[1]) if len(parts) > 1 else 0
     except Exception:
         hour, minute = 7, 30
+
+    if args.voice:
+        try:
+            from src.voice.service import get_voice_service
+            voice_srv = get_voice_service()
+            voice_srv.start()
+            console.print(f"[green][OK][/green] Voice activation active [dim](Wake word: '{voice_srv.wake_word}')[/dim]")
+        except Exception as e:
+            console.print(f"[bold red]Failed to start voice listener:[/bold red] {e}")
 
     run_continuous_schedule(target_hour=hour, target_minute=minute)
 

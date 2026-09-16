@@ -235,3 +235,37 @@ def test_update_todo_priority() -> None:
     pr_task2 = next(t for t in todos2 if "Review PR #42" in t["text"])
     assert pr_task2["priority"] == "important"
 
+
+def test_add_todo_item_list_and_aliases(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Verify add_todo_item accepts a list of items and handles argument aliases like items and tasks."""
+    monkeypatch.setenv("AETHER_VAULT_DIR", str(tmp_path))
+
+    # 1. Pass list of task strings
+    res = add_todo_item(text=["Buy paper towels", "Buy running shoes"], project="Shopping")
+    assert res["status"] == "success"
+    assert res["count"] == 2
+    assert len(res["entry"]) == 2
+    assert "- [ ] Buy paper towels" in res["entry"][0]
+    assert "- [ ] Buy running shoes" in res["entry"][1]
+
+    # Verify tasks written to Shopping.md
+    shopping_todos = list_todos(project="Shopping", status="all")
+    assert len(shopping_todos) == 2
+    texts = [t["text"] for t in shopping_todos]
+    assert "Buy paper towels" in texts
+    assert "Buy running shoes" in texts
+
+    # 2. Pass tasks kwarg alias with dicts
+    res2 = add_todo_item(tasks=[{"task": "Organic Milk"}, {"text": "Whole Wheat Bread"}], project="Shopping")
+    assert res2["status"] == "success"
+    assert res2["count"] == 2
+
+    # 3. Pass multiline string with markdown bullets
+    res3 = add_todo_item(text="- [ ] Organic Apples\n* Bananas", project="Shopping")
+    assert res3["status"] == "success"
+    assert res3["count"] == 2
+
+    all_shopping = list_todos(project="Shopping", status="all")
+    assert len(all_shopping) == 6
+
+

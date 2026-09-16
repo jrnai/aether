@@ -28,11 +28,23 @@ version: "1.0"
 # LLM Inference Server Configuration
 llm:
   provider: "ollama"                         # "ollama" or "vllm"
-  base_url: "http://localhost:11434"
-  model: "qwen2.5:14b-instruct"              # Recommended: qwen2.5:14b-instruct or llama3.1:8b-instruct
+  base_url: "http://127.0.0.1:11434"
+  model: "qwen2.5:7b-instruct"               # Global default fallback model
+
+  # Multi-Model Specialized Routing (RTX 5060)
+  coding_model: "qwen2.5-coder:7b"           # Code Studio & Side AI Coding Agent
+  general_model: "qwen2.5:7b-instruct"       # Agentic, tool calling, daily briefings & chat
+  reasoning_model: "deepseek-r1:7b"          # Step-by-step logic, math & puzzles
+  vision_model: "qwen2.5vl:7b"               # Multimodal vision model for image processing
+
+  auto_route: true                           # Automatically route by task intent
   temperature: 0.1                           # Low temperature for deterministic tool calling
-  context_window_tokens: 8192                # Hard context ceiling
-  max_turn_steps: 8                          # Maximum ReAct loops before halting
+  context_window_tokens: 16384               # 16k context ceiling for consumer GPU
+  num_ctx: 16384                             # Dynamic runtime num_ctx passed to Ollama API
+  flash_attention: true                      # Enforce Flash Attention to reduce long-context VRAM usage
+  dynamic_tool_masking: true                 # Prune unused tools based on intent to reduce schema tokens
+  max_turn_steps: 25                         # Maximum ReAct loops before halting
+  keep_alive: "24h"                          # Pin model in GPU VRAM to prevent cold loading delay
 
 # Local Storage Paths
 storage:
@@ -44,7 +56,7 @@ storage:
 safety:
   require_approval_on_mutation: true         # Code-level safety gate
   approval_timeout_seconds: 60               # Seconds before auto-cancelling pending mutation
-  safe_tools_override: []                    # Explicit whitelist to bypass HITL (advanced)
+  safe_tools_override: []                    # Explicit whitelist to bypass HITL
 
 # Background Daemon & Scheduled Briefings
 daemon:
@@ -58,6 +70,17 @@ logging:
   level: "INFO"                              # "DEBUG", "INFO", "WARNING", "ERROR"
   log_to_stdout: true
   audit_to_db: true                          # Record all tool calls and approvals in aether.db
+
+# Hands-Free Voice Activation
+voice:
+  enabled: false                             # Start voice listening automatically
+  wake_word: "aether"                        # "aether", "hey aether", "hey jarvis"
+  threshold: 0.5                             # Wake word detection sensitivity (0.0 to 1.0)
+  stt_model: "base.en"                       # Local faster-whisper model ("tiny.en", "base.en")
+  tts_enabled: true                          # Speak responses out loud
+  tts_voice: "en-US-AriaNeural"              # Microsoft Neural voice ("en-US-AriaNeural", "en-US-GuyNeural")
+  silence_timeout_seconds: 1.2               # Silence duration to detect end of speech
+  max_recording_seconds: 15.0                # Maximum voice prompt duration
 ```
 
 ---

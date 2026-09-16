@@ -14,7 +14,7 @@ All computations, schedules, emails, notes, code edits, and generated artwork re
 | :--- | :--- | :--- | :--- |
 | **Primary Language** | Python | 3.11+ (Native Windows 64-bit) | Modern type hints, high-performance asyncio, rich AI ecosystem. |
 | **Web Framework** | Starlette + Uvicorn | Starlette 0.45+, Uvicorn 0.34+ | Minimalistic, ultra-fast ASGI microframework with low latency and native async support. |
-| **Frontend UI** | Modern Vanilla ES6+ & CSS3 | Native Browser (Edge / Chrome) | Zero npm/Webpack bloat, instant zero-compilation loading, glassmorphic dark theme. |
+| **Frontend UI** | Modern Vanilla ES6+ & CSS3 | Native Browser (Edge / Chrome) | Zero npm/Webpack bloat, instant zero-compilation loading, Zinc + Sky Blue dark design system. |
 | **Desktop Window Mode** | Microsoft Edge / Google Chrome | Application Mode (`--app=...`) | Lightweight native desktop window shell without heavy Electron runtime dependencies. |
 | **LLM Inference Engine** | Ollama | v0.5+ | Local GPU-accelerated model serving, OpenAI-compatible chat API, fast tool dispatch. |
 | **Primary LLM Models** | Qwen 2.5 Coder & DeepSeek-R1 | `qwen2.5-coder:7b`, `deepseek-r1:7b` | Specialized coding intelligence, inline tool evaluation, and step-by-step reasoning. |
@@ -24,7 +24,11 @@ All computations, schedules, emails, notes, code edits, and generated artwork re
 | **Database & Storage** | SQLite 3 | Embedded WAL mode | Relational storage for sessions, messages, audit logs, and cache (`data/aether.db`). |
 | **Notes & Task Store** | Markdown Vault | Obsidian / Logseq compatible | Human-readable filesystem vault with daily notes and task checkboxes (`data/vault/`). |
 | **Search Engine** | DuckDuckGo Search | `ddg-search` (privacy-preserving) | Live internet discovery with zero IP tracking and mandatory source citations. |
-| **Testing Harness** | Pytest + AnyIO + Starlette TestClient | Pytest 9.1+ | Unit, integration, and contract tests across all 247 automated test cases. |
+| **Weather & Geocoding**| Open-Meteo REST API | Open-Meteo v1 (zero-key) | Free, high-accuracy global forecast and debounced location geocoding. |
+| **Voice Speech & Audio**| Edge-TTS + Faster-Whisper | `edge-tts` 7.0+, `faster-whisper` | Microsoft Neural TTS (`en-US-AriaNeural`) + `base.en` Whisper spotter for "aether" wake word. |
+| **Observability & Tracing**| Native Python Telemetry | `ExecutionTrace` & `StepTrace` | Sub-millisecond latency tracking, token accounting, and interactive UI trace inspector. |
+| **Evaluation Harness** | Aether Benchmark Suite | Custom deterministic harness (`evals/`) | Intent routing (50 cases), injection defense (25 attacks), and token savings evaluation. |
+| **Testing Harness** | Pytest + AnyIO + Starlette TestClient | Pytest 9.1+ | Unit, integration, security, and design system tests across all 318 automated test cases. |
 
 ---
 
@@ -113,21 +117,37 @@ flowchart TB
   - **10-Minute Auto-Sleep**: A daemon watchdog monitors inactivity. After 600 seconds of idle time, it invokes `POST /free` to flush VRAM back to 0 MB and cleanly terminates the process.
   - **Process Protection**: Python `atexit` and ASGI shutdown hooks ensure no orphaned background processes remain when Aether closes.
 
-### 4.2 Interactive Chat & Markdown Rendering
-- **Pre-Pass Image Parser**: Custom Markdown renderer in `src/web/static/app.js` extracts image tags before italic or link formatting to prevent underscore (`_`) corruption in filenames.
-- **Glassmorphic Image Cards**: Renders responsive cards with hover scale effects, cyan accent glow, and an overlay linking to the full-resolution file.
+### 4.2 Interactive Chat & High-Density Markdown Rendering
+- **Pre-Pass Image Parser**: Custom Markdown renderer in `src/web/static/store.js` extracts image tags before italic or link formatting to prevent underscore (`_`) corruption in filenames.
+- **Zinc + Sky Blue Image Cards**: Renders responsive cards with solid Zinc boundaries, Sky Blue borders on hover, and an overlay linking to the full-resolution file.
 - **Protocol & Domain Sanitizer**: Strips any hallucinated origin prefixes (such as `https://example.com/api/...` or `http://localhost:8000/api/...`) to ensure image URLs resolve locally and reliably.
 - **DeepSeek-R1 Thought Accordions**: Automatically extracts `<think>` blocks into collapsible HTML `<details>` elements for inspection of model reasoning.
 
 ### 4.3 Autonomous Software Engineering (Antigravity Mode)
-- **Focussed Code Patching**: `files_patch_file` replaces exact snippet blocks rather than rewriting whole files, saving tokens and preserving comments.
+- **Focused Code Patching**: `files_patch_file` replaces exact snippet blocks rather than rewriting whole files, saving tokens and preserving comments.
 - **Workspace Navigation**: Direct directory listing, recursive searches, file reads, and workspace switching (`files_set_workspace`).
-- **Terminal Execution**: Sandboxed execution of shell commands, test suites (`pytest`), and scripts with strict timeout safety.
+- **AST Terminal Execution Sandbox**: Sandboxed execution of shell commands, test suites (`pytest`), and scripts with strict timeout safety, binary allowlists, and path containment.
 
-### 4.4 Personal Productivity (Calendar, Notes, Mail)
+### 4.4 Personal Productivity (Calendar, Notes, Mail, Weather)
 - **Notes & Tasks**: Direct integration with Obsidian-style Markdown vaults. Organizes tasks with priorities (`urgent`, `important`, `normal`) and checks off completed items.
 - **Calendar Operations**: Syncs with CalDAV and Google Calendar. Implements a mandatory 30-minute buffer before and after all scheduled commitments.
 - **Email Triage**: Connects to IMAP to fetch unread emails, summarizes priority messages, and drafts replies without sending them until confirmed.
+- **Weather Forecast & Location Autocomplete**: Real-time hourly and daily forecast cards backed by Open-Meteo with debounced typeahead geocoding.
+
+### 4.5 Neural Voice Assistant Subsystem
+- **Dedicated Wake Word**: Responds to `"aether"` (and `"hey aether"`) using an adaptive speech-buffer Whisper spotter leveraging the loaded `faster-whisper` model (`base.en`), eliminating fixed pre-trained model constraints.
+- **Natural Speech Synthesis**: Powered by Microsoft Neural speech synthesis via `edge-tts` (`en-US-AriaNeural`), with instant barge-in interruption via Windows native `mciSendStringW`.
+- **Fullscreen Frosted Glass Overlay**: Immersive voice state overlay (`backdrop-filter: blur(28px)`) with central pulsating orb showing real-time listening, transcribing, and speaking statuses.
+
+### 4.6 Structured Observability & Execution Telemetry
+- **Deterministic Trace Engine**: Every execution turn generates structured `ExecutionTrace` and `StepTrace` records tracking per-step inference latency vs. tool execution latency.
+- **Token Accounting**: Captures prompt and generation token estimates across both standard and SSE streaming responses.
+- **Interactive UI Trace Inspector**: Monospace telemetry badge on assistant bubbles expanding to show execution steps, timing metrics, and status tags (`status-ok`, `status-warn`, `status-err`).
+
+### 4.7 Continuous Agent Evaluation Benchmark Suite (`evals/`)
+- **Automated Quality Benchmark**: Offline-first benchmark harness evaluating intent domain routing (50 cases), adversarial prompt injection defense (25 attacks), and model parameter normalization (30 cases).
+- **Token Economics**: Quantifies 83.3% token savings via dynamic tool capability masking compared to monolithic tool catalog injection.
+- **CI Quality Gate**: Backed by `tests/unit/test_evals.py` ensuring benchmarks execute in <50ms and maintain a 100% defense rate.
 
 ---
 
@@ -166,16 +186,21 @@ aether/
 │   ├── 03_orchestrator_and_agent_loop.md
 │   ├── 04_data_models_and_storage.md
 │   ├── 05_configuration_and_environment.md
-│   └── 06_testing_and_verification_plan.md
+│   ├── 06_testing_and_verification_plan.md
+│   ├── 07_frontend_and_design_system.md
+│   └── adr/                           # Architecture Decision Records (ADR-001 through ADR-007)
+├── evals/                             # Continuous Agent Evaluation Benchmark Suite
+│   ├── datasets/                      # 50 intent routing, 25 injection, 30 parameter test cases
+│   ├── harness.py                     # Evaluation benchmark engine & SLA verifier
+│   └── run_benchmarks.py              # CLI scorecard runner
 ├── scripts/
-│   ├── start_portal.bat               # One-click desktop app launcher
 │   ├── setup_comfyui.bat              # ComfyUI installation & CUDA setup script
 │   └── run_comfyui.bat                # Standalone ComfyUI server launcher
 ├── src/
 │   ├── agent/
-│   │   ├── loop.py                    # ReAct agent loop, tool dispatch, source citations
+│   │   ├── loop.py                    # ReAct agent loop, tool masking, execution tracing
 │   │   ├── prompts.py                 # Ground truth temporal prompts & system invariants
-│   │   ├── guardrails.py              # HITL authorization gate
+│   │   ├── guardrails.py              # HITL authorization gate & prompt injection scanner
 │   │   └── patch_engine.py            # Targeted code block replace/patch logic
 │   ├── client/
 │   │   └── ollama_client.py           # Client for local Ollama LLM inference
@@ -183,18 +208,26 @@ aether/
 │   │   └── manager.py                 # Stdio JSON-RPC process bridge
 │   ├── servers/
 │   │   ├── image_server.py            # ComfyUI client, Juggernaut XL workflow, auto-sleep
-│   │   ├── files_server.py            # Workspace file management & command runner
+│   │   ├── files_server.py            # Workspace file management & AST command runner
 │   │   ├── notes_server.py            # Markdown vault & task tracking
 │   │   ├── calendar_server.py         # Google Calendar / CalDAV client
 │   │   ├── mail_server.py             # IMAP email triage & draft stager
-│   │   └── search_server.py           # DuckDuckGo search & webpage text extractor
+│   │   ├── search_server.py           # DuckDuckGo search & webpage text extractor
+│   │   └── weather_server.py          # Open-Meteo weather & location geocoding
+│   ├── voice/
+│   │   ├── engine.py                  # Whisper wake spotter & voice assistant loop
+│   │   ├── audio_io.py                # Edge-TTS Neural Aria synthesis & barge-in playback
+│   │   └── service.py                 # Background voice service thread
 │   └── web/
-│       ├── server.py                  # Starlette ASGI app & REST endpoints
+│       ├── server.py                  # Starlette ASGI app, REST endpoints, trace buffer
 │       └── static/
-│           ├── app.js                 # Vanilla ES6 UI logic & Markdown card parser
-│           └── style.css              # Glassmorphic dark styling & responsive layouts
+│           ├── index.html             # Semantic accessible dashboard layout
+│           ├── js/                    # Native ES modules (chat, coder, mail, overview, etc.)
+│           └── style.css              # Pure Zinc + Sky Blue desktop-class styling
 ├── tests/
-│   └── unit/                          # 247 automated unit and contract tests
+│   └── unit/                          # 318 automated unit, design system, and eval tests
+├── start_portal.bat                   # Native Windows desktop app launcher
+├── start_portal.sh                    # Cross-platform macOS/Linux/WSL launcher
 ├── pyproject.toml                     # Python dependencies and build metadata
-└── README.md                          # Project overview and quick start guide
+└── README.md                          # Project overview, architecture scorecard, and quick start
 ```

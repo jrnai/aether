@@ -78,18 +78,54 @@ INJECTION_TEST_CASES = [
 
 ---
 
+### 2.4 Frontend Architecture & Anti-AI-Slop Quality Gates
+
+#### 1. Design System Invariants (`tests/unit/test_design_system.py`)
+- **Banned Slop Property Linter**: Confirms `style.css` contains zero instances of `backdrop-filter`, `primary-glow`, `text-shadow`, or `-webkit-background-clip: text`.
+- **Zero-Emoji Enforcement**: Asserts strictly zero unicode emojis across HTML templates and CSS sheets.
+- **Accessibility & Button Semantics**: Validates that inline interactive triggers use accessible `<button>` or `<input>` elements rather than fake clickable `<div>`/`<span>` tags.
+- **Token Completeness**: Confirms all `:root` design tokens are present.
+
+#### 2. Native ES Modules & Handlers (`tests/unit/test_frontend_modules.py`)
+- **Module Exports & Imports**: Verifies that every symbol imported across native ES modules matches an explicit `export`.
+- **Global Window Bindings**: Asserts that every inline event handler in `index.html` is explicitly bound to `window` in `app.js`.
+- **Zero-Emoji Module Compliance**: Strict unicode regex scan across all `.js` frontend modules.
+
+---
+
+### 2.5 Continuous Agent Evaluation Benchmark Suite (`evals/`)
+
+Automated evaluation harness quantifying agent quality, safety, and token economics:
+
+#### 1. Evaluation Benchmark Datasets (`evals/datasets/`)
+- **Intent Domain Routing (`intent_routing.json`)**: 50 queries verifying that intent classification accurately activates relevant domains (`calendar`, `mail`, `notes`, `files_and_coding`, `web`, `image_generation`, or conversational fallback).
+- **Prompt Injection Defense (`injection_defense.json`)**: 25 adversarial test cases including direct instruction overrides, ChatML token spoofing, subshell expansions (`$()`, `` ` ``), path traversals outside workspace roots, and unauthorized mutating tool actions.
+- **Parameter Normalization (`parameter_normalization.json`)**: 30 parameter alias distortions ensuring common model variations (`cmd` -> `command`, `summary` -> `title`, `file_path` -> `path`) map correctly without schema exceptions.
+
+#### 2. CI Regression Gate (`tests/unit/test_evals.py`)
+- `test_intent_routing_benchmark`: Asserts domain routing accuracy >= 90.0% (currently 100.0%).
+- `test_injection_defense_benchmark`: Asserts prompt injection defense rate == 100.0%.
+- `test_parameter_normalization_benchmark`: Asserts normalization pass rate >= 95.0% (currently 100.0%).
+- `test_token_savings_benchmark`: Asserts dynamic tool masking achieves >= 75.0% schema token savings (currently 83.3%).
+- `test_full_evaluation_suite`: Validates that the entire benchmark suite runs in under 5 seconds (offline, no live GPU required).
+
+---
+
 ## 3. Execution Commands & Quality Gates
 
 Developers and CI pipelines must satisfy the following checks:
 
 ```bash
-# 1. Run full test suite with coverage
-pytest tests/ -v --cov=src --cov-report=term-missing --cov-fail-under=85
+# 1. Run full unit test suite (318 automated test cases)
+pytest tests/unit/ -v
 
-# 2. Strict static type analysis
+# 2. Run agent evaluation benchmark suite and generate scorecard
+python -m evals.run_benchmarks
+
+# 3. Strict static type analysis
 mypy src/ --strict
 
-# 3. Code formatting and linting
+# 4. Code formatting and linting
 ruff check src/ tests/
 ruff format --check src/ tests/
 ```

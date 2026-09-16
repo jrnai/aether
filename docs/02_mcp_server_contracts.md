@@ -433,6 +433,104 @@ Interacts with user mail via IMAP/OAuth for fetching, local staging for drafts, 
 
 ---
 
+### 3.4 Files & Autonomous Coding Server (`src/servers/files_server.py`)
+
+Workspace sandboxing: all operations are restricted to the active workspace directory (configured via `files_set_workspace` or current working directory).
+
+#### Tool 1: `files_read_file`
+- **Safety Classification**: Safe / Read-Only (`safe: true`)
+- **Description**: Reads the contents of a file within the workspace with line number indicators.
+- **Parameters**: `{"path": {"type": "string", "description": "Relative path to target file"}}`
+- **Returns**: `{"status": "success", "path": "src/app.py", "lines_count": 120, "content": "..."}`
+
+#### Tool 2: `files_write_file`
+- **Safety Classification**: Mutating (`safe: false` - Requires Confirmation)
+- **Description**: Writes full content to a new or existing file within the workspace.
+- **Parameters**: `{"path": {"type": "string"}, "content": {"type": "string"}}`
+- **Returns**: `{"status": "success", "path": "src/new_module.py", "bytes_written": 1420}`
+
+#### Tool 3: `files_patch_file`
+- **Safety Classification**: Mutating (`safe: false` - Requires Confirmation)
+- **Description**: Replaces an exact unique substring/code block with new code, preserving surrounding lines and comments.
+- **Parameters**: `{"path": {"type": "string"}, "target": {"type": "string"}, "replacement": {"type": "string"}}`
+- **Returns**: `{"status": "success", "path": "src/app.py", "replacements": 1}`
+
+#### Tool 4: `files_list_directory`
+- **Safety Classification**: Safe / Read-Only (`safe: true`)
+- **Description**: Lists files and directories with file sizes, categories, and modification dates.
+- **Parameters**: `{"path": {"type": "string", "default": "."}}`
+- **Returns**: `{"status": "success", "entries": [...]}`
+
+#### Tool 5: `files_search_files`
+- **Safety Classification**: Safe / Read-Only (`safe: true`)
+- **Description**: Performs glob/filename searches or text grep within workspace files.
+- **Parameters**: `{"pattern": {"type": "string"}, "content_query": {"type": "string"}}`
+- **Returns**: `{"status": "success", "matches": [...]}`
+
+#### Tool 6: `files_run_command`
+- **Safety Classification**: Mutating (`safe: false` - Requires Confirmation)
+- **Description**: Executes an allowed terminal command within the sandboxed workspace.
+- **Parameters**: `{"command": {"type": "string"}, "timeout_seconds": {"type": "integer", "default": 30}}`
+- **Returns**: `{"status": "success", "command": "pytest tests/unit", "exit_code": 0, "stdout": "...", "stderr": "..."}`
+
+---
+
+### 3.5 Weather & Geocoding Server (`src/servers/weather_server.py`)
+
+Zero-configuration weather and global location search backed by Open-Meteo REST endpoints.
+
+#### Tool 1: `get_current_weather`
+- **Safety Classification**: Safe / Read-Only (`safe: true`)
+- **Description**: Returns current temperature (Celsius & Fahrenheit), condition, wind, UV index, and 3-day forecast.
+- **Parameters**: `{"location": {"type": "string", "description": "City or region name", "default": "auto"}}`
+- **Returns**: Formatted multi-line text summary with condition, humidity, and highs/lows.
+
+#### Tool 2: `search_weather_locations`
+- **Safety Classification**: Safe / Read-Only (`safe: true`)
+- **Description**: Fast debounced geocoding search for city selection.
+- **Parameters**: `{"query": {"type": "string"}, "count": {"type": "integer", "default": 6}}`
+- **Returns**: Array of location objects with `name`, `region`, `country`, `latitude`, `longitude`.
+
+---
+
+### 3.6 Photorealistic Image Generation Server (`src/servers/image_server.py`)
+
+Local GPU image generation powered by Juggernaut XL v9 on ComfyUI with on-demand auto-wake and 10-minute idle auto-sleep watchdog.
+
+#### Tool 1: `generate_image`
+- **Safety Classification**: Safe / Read-Only (`safe: true`)
+- **Description**: Generates a 1024x1024 photorealistic image from a prompt.
+- **Parameters**:
+  - `prompt` (string): Description of the scene/subject.
+  - `negative_prompt` (string, optional): Elements to exclude (defaults to standard anti-defect prompt).
+  - `width` (integer, default: 1024)
+  - `height` (integer, default: 1024)
+- **Returns**: `{"status": "success", "image_url": "/api/generated_images/...", "markdown": "![prompt](/api/...)", "dimensions": "1024x1024"}`
+
+#### Tool 2: `get_comfyui_status`
+- **Safety Classification**: Safe / Read-Only (`safe: true`)
+- **Description**: Queries lifecycle status (`running`, `idle`, `stopped`), idle duration, and detected GPU devices.
+
+---
+
+### 3.7 Web Search & Fetch Server (`src/servers/search_server.py`)
+
+Privacy-preserving web discovery via DuckDuckGo with zero user tracking.
+
+#### Tool 1: `search_web`
+- **Safety Classification**: Safe / Read-Only (`safe: true`)
+- **Description**: Queries DuckDuckGo for top web results with titles, snippets, and source URLs.
+- **Parameters**: `{"query": {"type": "string"}, "max_results": {"type": "integer", "default": 5}}`
+- **Returns**: Array of result dictionaries with title, URL, snippet.
+
+#### Tool 2: `fetch_web_page`
+- **Safety Classification**: Safe / Read-Only (`safe: true`)
+- **Description**: Extracts clean, readable text from a target web URL with HTML tag stripping.
+- **Parameters**: `{"url": {"type": "string"}, "max_length": {"type": "integer", "default": 4000}}`
+- **Returns**: `{"status": "success", "url": "...", "content": "..."}`
+
+---
+
 ## 4. MCP Server Registration Format (`config/mcp_servers.json`)
 
 The orchestrator discovers and spawns tool servers using the standard MCP configuration format:

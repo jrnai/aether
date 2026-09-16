@@ -138,7 +138,8 @@ export async function sendCoderMessage() {
         <span class="plan-title">Architecting Implementation Plan...</span>
         <span class="plan-status-badge pending">Analyzing</span>
       </div>
-      <div class="loading-spinner" style="padding: 0.8rem;">Synthesizing workspace context and preparing file diffs...</div>
+      <div class="skeleton skeleton-block"></div>
+      <div class="skeleton skeleton-line short"></div>
     `;
     messagesContainer.appendChild(loadingCard);
     messagesContainer.scrollTop = messagesContainer.scrollHeight;
@@ -183,7 +184,8 @@ export async function sendCoderMessage() {
         <span class="exec-title" style="color:#FBBF24;">Executing Direct Implementation...</span>
         <span class="plan-status-badge pending">Running</span>
       </div>
-      <div class="loading-spinner" style="padding: 0.8rem;">Applying code edits to workspace files...</div>
+      <div class="skeleton skeleton-block"></div>
+      <div class="skeleton skeleton-line short"></div>
     `;
     messagesContainer.appendChild(execCard);
     messagesContainer.scrollTop = messagesContainer.scrollHeight;
@@ -196,7 +198,7 @@ export async function sendCoderMessage() {
       });
       if (!res.ok) throw new Error(`HTTP error ${res.status}`);
 
-      const progressEl = execCard.querySelector('.loading-spinner');
+      const progressEl = execCard.querySelector('.skeleton');
       let completedData = null;
 
       await consumeCoderStream(res, progressEl, (result) => {

@@ -184,48 +184,97 @@ def infer_priority_from_text(text: str) -> str:
 
 @mcp.tool()
 def add_todo_item(
-    task: str = "",
+    task: Any = "",
     project: str = "Inbox",
     due_date: str | None = None,
     priority: str | None = None,
-    todo: str | None = None,
-    text: str | None = None,
+    todo: Any = None,
+    text: Any = None,
     project_name: str | None = None,
     section: str | None = None,
+    items: Any = None,
+    tasks: Any = None,
+    todos: Any = None,
+    content: Any = None,
+    title: Any = None,
+    description: Any = None,
 ) -> dict[str, Any]:
-    """Add a new checklist task (- [ ]) with optional due date and priority to a project or Inbox note."""
-    task_text = task or todo or text or ""
+    """Add one or more checklist tasks (- [ ]) with optional due date and priority to a project or Inbox note."""
     target_project = project_name or section or project
     try:
         target = resolve_safe_path(target_project)
         target.parent.mkdir(parents=True, exist_ok=True)
 
-        clean_task = task_text.strip()
+        # Collect raw task candidates
+        raw = task or todo or text or items or tasks or todos or content or title or description or ""
 
-        # Determine priority: explicit param or infer from text
-        pri = (priority or "").strip().lower()
-        if pri not in ("urgent", "important", "normal"):
-            pri = infer_priority_from_text(clean_task)
+        # Flatten into a list of task strings
+        task_list: list[str] = []
+        if isinstance(raw, (list, tuple, set)):
+            for item in raw:
+                if isinstance(item, dict):
+                    t_str = str(item.get("task") or item.get("text") or item.get("title") or item.get("name") or "").strip()
+                else:
+                    t_str = str(item).strip()
+                if t_str:
+                    task_list.append(t_str)
+        elif isinstance(raw, str):
+            lines = [ln.strip() for ln in raw.splitlines() if ln.strip()]
+            if lines:
+                task_list.extend(lines)
+            elif raw.strip():
+                task_list.append(raw.strip())
+        elif raw:
+            task_list.append(str(raw).strip())
 
-        entry = f"- [ ] {clean_task}"
-        if pri in ("urgent", "important"):
-            entry += f" priority::{pri}"
-        if due_date:
-            entry += f" due::{due_date.strip()}"
+        if not task_list:
+            return {
+                "status": "error",
+                "message": "No task text provided to add.",
+            }
+
+        entries: list[str] = []
+        overall_pri = (priority or "").strip().lower()
 
         existing = target.read_text(encoding="utf-8") if target.exists() else ""
         prefix = "\n" if existing and not existing.endswith("\n") else ""
+        text_to_append = ""
+        task_priorities: list[str] = []
+
+        for single_task in task_list:
+            clean = re.sub(r"^[-*]\s*(\[[ xX]?\]\s*)?", "", single_task).strip()
+            if not clean:
+                continue
+
+            pri = overall_pri if overall_pri in ("urgent", "important", "normal") else infer_priority_from_text(clean)
+            task_priorities.append(pri)
+            entry = f"- [ ] {clean}"
+            if pri in ("urgent", "important"):
+                entry += f" priority::{pri}"
+            if due_date:
+                entry += f" due::{due_date.strip()}"
+
+            entries.append(entry)
+            text_to_append += f"{entry}\n"
+
+        if not entries:
+            return {
+                "status": "error",
+                "message": "No valid task items could be parsed.",
+            }
+
         with open(target, "a", encoding="utf-8") as f:
-            f.write(f"{prefix}{entry}\n")
+            f.write(f"{prefix}{text_to_append}")
 
         _try_sync_fts(target)
 
         return {
             "status": "success",
             "file": target.name,
-            "entry": entry,
-            "priority": pri,
-            "message": f"Added task to {target.name}",
+            "entry": entries[0] if len(entries) == 1 else entries,
+            "count": len(entries),
+            "priority": task_priorities[0] if len(task_priorities) == 1 else (overall_pri if overall_pri in ("urgent", "important", "normal") else "normal"),
+            "message": f"Added {len(entries)} task(s) to {target.name}",
         }
     except Exception as e:
         return {

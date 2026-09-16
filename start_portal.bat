@@ -41,6 +41,17 @@ if errorlevel 1 (
 :: 3. Ensure port 8000 is clean (clear any stale process from previous crashed runs)
 powershell -NoProfile -Command "try { Get-NetTCPConnection -LocalPort 8000 -State Listen -ErrorAction Stop | ForEach-Object { Stop-Process -Id $_.OwningProcess -Force -ErrorAction SilentlyContinue } } catch {}; exit 0" >nul 2>&1
 
+:: 3.5 Check Google Calendar OAuth status
+if exist "credentials.json" (
+    ".venv\Scripts\python.exe" -c "from src.servers.google_calendar_client import GoogleCalendarManager; mgr = GoogleCalendarManager(); exit(0 if mgr.is_logged_in() else 1)" >nul 2>&1
+    if errorlevel 1 (
+        echo [!] Google Calendar authorization is expired or disconnected.
+        echo [*] Launching browser to re-authenticate Google Calendar...
+        ".venv\Scripts\python.exe" -m src.tools.login_google_calendar
+        echo.
+    )
+)
+
 
 :: 4. Launch Aether backend and native desktop app window
 echo [*] Starting Aether backend service...
@@ -58,8 +69,9 @@ if not "%EXIT_CODE%"=="0" (
     echo   Keep this console window open to review the error message above.
     echo =====================================================================
     pause
+    exit /b %EXIT_CODE%
 ) else (
     echo   Aether desktop application has closed normally.
     echo =====================================================================
+    exit 0
 )
-exit /b %EXIT_CODE%

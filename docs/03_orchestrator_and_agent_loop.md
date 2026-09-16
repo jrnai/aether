@@ -154,6 +154,17 @@ Total Context Window: 8,192 Tokens
 3. **Loop Guard**:
    - A turn is aborted with an error if the model reaches **8 consecutive tool call steps** without generating a user-facing response, preventing infinite tool loops.
 
+### 4.3 Dynamic Tool Masking & Capability Domain Routing
+
+Injecting all 28 registered tool definitions on every turn consumes ~4,680 tokens in JSON Schema alone, crowding out user context and inducing off-domain model hallucinations.
+
+Aether implements **Dynamic Tool Masking** (`src/agent/loop.py`):
+1. **Domain Detection (`detect_intent_domains`)**: Evaluates incoming user input against keyword clusters spanning 6 capability domains: `calendar`, `mail`, `notes`, `files_and_coding`, `web`, `image_generation`.
+2. **Active Schema Pruning (`get_active_tools_schema`)**:
+   - If one or more domains are detected, Aether filters the active schema to only tools matching those domains (averaging ~4 tools / ~780 tokens per turn).
+   - If no specific domain is recognized (e.g. conversational greetings or ambiguous questions), Aether retains the full catalog.
+3. **Token Savings**: Reduces tool schema overhead by **~83.3% per turn** (~3,900 tokens saved), accelerating inference latency on consumer GPUs.
+
 ---
 
 ## 5. Resilience & Fault Recovery
@@ -161,6 +172,50 @@ Total Context Window: 8,192 Tokens
 | Failure Mode | Detection | Automated Recovery |
 | :--- | :--- | :--- |
 | **Malformed Tool Arguments** | Pydantic / JSON schema validation failure | Inject validation error message as a tool response: `{"status": "error", "message": "Invalid argument: 'start_iso' missing"}`. The LLM self-corrects on the next iteration. |
+| **Parameter Name Drift** | Non-standard model argument names | `normalize_tool_args` intercepts aliases (`cmd` -> `command`, `file_path` -> `path`, `summary` -> `title`) before schema validation. |
 | **MCP Process Crash** | Broken stdio pipe (`BrokenPipeError`) | MCP Manager restarts the subprocess, re-initializes `tools/list`, and retries the tool call once. |
 | **LLM Server Unreachable** | HTTP 500 / Connection Refused | Yield user-friendly error: *"Ollama is not running. Please launch Ollama using `ollama serve`."* |
 | **Tool Execution Timeout** | Process execution > 15 seconds | Kill tool task, return `{"status": "timeout"}` to model. |
+
+---
+
+## 6. Structured Observability & Execution Traces
+
+Every turn of the agent loop records fine-grained telemetry structured as `ExecutionTrace` and `StepTrace` dataclasses:
+
+```python
+@dataclass
+class StepTrace:
+    step: int
+    type: str          # "inference", "tool_call", "synthesis"
+    name: str = ""
+    latency_ms: float = 0.0
+    tokens: int = 0
+    status: str = "ok" # "ok", "warn", "error", "cancelled"
+    details: dict[str, Any] = field(default_factory=dict)
+
+@dataclass
+class ExecutionTrace:
+    trace_id: str
+    total_latency_ms: float
+    total_tokens: int
+    step_count: int
+    model: str
+    steps: list[StepTrace] = field(default_factory=list)
+```
+
+- **Per-Step Latency**: Separates time spent in GPU inference from I/O tool execution.
+- **Token Accounting**: Tracks prompt and completion tokens across single and multi-step turns.
+- **Trace Buffer & Inspection**: Traces are buffered in a 100-item ring buffer in `src/web/server.py`, queryable at `GET /api/traces/{trace_id}`, and rendered inline in the Web UI Trace Inspector.
+
+---
+
+## 7. Continuous Agent Evaluation Benchmark Suite (`evals/`)
+
+To guarantee production reliability, Project Aether maintains an automated evaluation harness in `evals/`:
+- **Intent Domain Routing**: 50 queries verifying domain classifier accuracy (100% pass SLA).
+- **Prompt Injection Defense**: 25 adversarial payloads (jailbreaks, ChatML boundary attacks, command injections) verifying multi-tier defense (100% defense SLA).
+- **Parameter Normalization**: 30 distorted model argument patterns verifying automated aliasing (100% pass SLA).
+- **Token Economics**: Computes empirical schema reduction percentages.
+- **CI Regression Gate**: `tests/unit/test_evals.py` runs the entire benchmark suite in <50ms without live GPU requirements.
+

@@ -67,6 +67,20 @@ class LoggingConfig(BaseModel):
     audit_to_db: bool = True
 
 
+class VoiceConfig(BaseModel):
+    """Voice activation and hands-free assistant settings."""
+    enabled: bool = False
+    wake_word: str = "aether"
+    threshold: float = 0.5
+    stt_model: str = "base.en"
+    tts_enabled: bool = True
+    tts_voice: str = "en-US-AriaNeural"
+    input_device_index: int | None = None
+    silence_timeout_seconds: float = 1.2
+    max_recording_seconds: float = 15.0
+    pop_window_on_wake: bool = False
+
+
 class AetherConfig(BaseModel):
     """Root configuration model for Project Aether."""
     version: str = "1.0"
@@ -75,6 +89,7 @@ class AetherConfig(BaseModel):
     safety: SafetyConfig = Field(default_factory=SafetyConfig)
     daemon: DaemonConfig = Field(default_factory=DaemonConfig)
     logging: LoggingConfig = Field(default_factory=LoggingConfig)
+    voice: VoiceConfig = Field(default_factory=VoiceConfig)
 
 
 _CONFIG_INSTANCE: AetherConfig | None = None

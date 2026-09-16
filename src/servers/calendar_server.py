@@ -1,6 +1,7 @@
 """FastMCP server for calendar operations (free/busy, scheduling, listing events)."""
 import json
 import os
+import re
 import uuid
 from datetime import datetime, time, timedelta
 from pathlib import Path
@@ -53,10 +54,18 @@ def save_events(events: list[dict[str, Any]]) -> None:
 
 
 def _parse_iso(iso_str: str) -> datetime:
-    """Parse ISO-8601 or relative weekday date/time string into timezone-aware datetime."""
+    """Parse ISO-8601 or relative date/time string into timezone-aware datetime."""
     clean = iso_str.strip()
     if not clean:
         return datetime.now().astimezone()
+
+    # Pre-normalize dot-separated time notation often produced by STT engines (e.g. "11.30 pm" -> "11:30 pm")
+    clean = re.sub(
+        r"\b(\d{1,2})\.(\d{2})(?:\s*(am|pm))?\b",
+        lambda m: f"{m.group(1)}:{m.group(2)}" + (f" {m.group(3)}" if m.group(3) else ""),
+        clean,
+        flags=re.IGNORECASE,
+    )
 
     # 1. Standard ISO format
     try:
@@ -68,7 +77,35 @@ def _parse_iso(iso_str: str) -> datetime:
     except Exception:
         pass
 
-    # 2. Check for day of week relative strings (e.g. "Monday 10:30 AM", "Wed 2:30 PM")
+    now = datetime.now().astimezone()
+    clean_lower = clean.lower()
+
+    # 2. Check for relative day markers: today, tonight, tomorrow
+    target_date = now.date()
+    is_relative_day = False
+    time_str = clean
+
+    if "tomorrow" in clean_lower:
+        target_date = now.date() + timedelta(days=1)
+        time_str = re.sub(r"\btomorrow\b", "", clean, flags=re.IGNORECASE).strip()
+        is_relative_day = True
+    elif "today" in clean_lower or "tonight" in clean_lower:
+        target_date = now.date()
+        time_str = re.sub(r"\b(today|tonight)\b", "", clean, flags=re.IGNORECASE).strip()
+        is_relative_day = True
+
+    if is_relative_day:
+        time_str = re.sub(r"^(at|on)\s+", "", time_str, flags=re.IGNORECASE).strip()
+        if not time_str:
+            return datetime.combine(target_date, time(0, 0)).replace(tzinfo=now.tzinfo)
+        try:
+            from dateutil import parser
+            parsed = parser.parse(time_str, default=datetime.combine(target_date, time(0, 0)))
+            return datetime.combine(target_date, parsed.time()).replace(tzinfo=now.tzinfo)
+        except Exception:
+            pass
+
+    # 3. Check for day of week relative strings (e.g. "Monday 10:30 AM", "Wed 2:30 PM")
     days_map = {
         "monday": 0, "mon": 0,
         "tuesday": 1, "tue": 1, "tues": 1,
@@ -79,8 +116,6 @@ def _parse_iso(iso_str: str) -> datetime:
         "sunday": 6, "sun": 6,
     }
 
-    now = datetime.now().astimezone()
-    clean_lower = clean.lower()
     for day_name, target_weekday in days_map.items():
         if clean_lower.startswith(day_name):
             monday = (now - timedelta(days=now.weekday())).replace(hour=0, minute=0, second=0, microsecond=0)
@@ -95,10 +130,10 @@ def _parse_iso(iso_str: str) -> datetime:
                         continue
             return target_date
 
-    # 3. Fallback to dateutil if available
+    # 4. Fallback to dateutil if available
     try:
         from dateutil import parser
-        parsed = parser.parse(clean)
+        parsed = parser.parse(clean, default=datetime.combine(now.date(), time(0, 0)))
         if parsed.tzinfo is None:
             parsed = parsed.replace(tzinfo=now.tzinfo)
         return parsed
@@ -118,14 +153,39 @@ def list_events(
     force_refresh: bool = False,
 ) -> list[dict[str, Any]]:
     """List calendar events within an ISO-8601 time window (defaults to full current day)."""
-    start_iso = start_iso or start or date
-    end_iso = end_iso or end
-
     now = datetime.now().astimezone()
-    start_dt = _parse_iso(start_iso) if start_iso else now.replace(hour=0, minute=0, second=0, microsecond=0)
-    end_dt = _parse_iso(end_iso) if end_iso else start_dt + timedelta(days=7)
+
+    if date:
+        date_clean = date.strip()
+        start_dt = _parse_iso(date_clean).replace(hour=0, minute=0, second=0, microsecond=0)
+        end_dt = _parse_iso(end_iso or end) if (end_iso or end) else start_dt.replace(hour=23, minute=59, second=59, microsecond=999999)
+    else:
+        start_raw = start_iso or start
+        end_raw = end_iso or end
+        if start_raw:
+            start_dt = _parse_iso(start_raw)
+            if len(start_raw.strip()) <= 10:
+                start_dt = start_dt.replace(hour=0, minute=0, second=0, microsecond=0)
+            end_dt = _parse_iso(end_raw) if end_raw else start_dt.replace(hour=23, minute=59, second=59, microsecond=999999)
+        else:
+            # Defaults to full current day
+            start_dt = now.replace(hour=0, minute=0, second=0, microsecond=0)
+            end_dt = _parse_iso(end_raw) if end_raw else start_dt.replace(hour=23, minute=59, second=59, microsecond=999999)
+
     start_dt = start_dt.replace(microsecond=0)
     end_dt = end_dt.replace(microsecond=0)
+
+    def _enrich_event(evt: dict[str, Any]) -> dict[str, Any]:
+        item = dict(evt)
+        start_val = item.get("start") or item.get("start_time") or item.get("start_iso") or ""
+        try:
+            edt = _parse_iso(str(start_val))
+            item["date"] = edt.strftime("%Y-%m-%d")
+            item["day_of_week"] = edt.strftime("%A")
+            item["is_today"] = (edt.date() == now.date())
+        except Exception:
+            pass
+        return item
 
     # 1. Attempt live Google Calendar fetch (API or iCal) if configured
     gcal_manager = GoogleCalendarManager()
@@ -140,7 +200,7 @@ def list_events(
 
         live_events = gcal_manager.fetch_events(start_dt, end_dt)
         if live_events:
-            results = sorted(live_events, key=lambda x: x["start"])
+            results = [_enrich_event(e) for e in sorted(live_events, key=lambda x: x["start"])]
             _EVENTS_CACHE[cache_key] = (now_ts, results)
             return results
 
@@ -157,7 +217,7 @@ def list_events(
 
         caldav_events = caldav_mgr.fetch_events(start_dt, end_dt)
         if caldav_events:
-            results = sorted(caldav_events, key=lambda x: x["start"])
+            results = [_enrich_event(e) for e in sorted(caldav_events, key=lambda x: x["start"])]
             _EVENTS_CACHE[cache_key] = (now_ts, results)
             return results
 
@@ -170,7 +230,7 @@ def list_events(
             evt_end = _parse_iso(evt["end"])
             # Overlaps interval if evt_start < end_dt and evt_end > start_dt
             if evt_start < end_dt and evt_end > start_dt:
-                matching.append(evt)
+                matching.append(_enrich_event(evt))
         except Exception:
             continue
 
@@ -301,28 +361,61 @@ def create_event(
     events: list[dict[str, Any]] | None = None,
     summary: str | None = None,
     name: str | None = None,
+    event: str | None = None,
+    task: str | None = None,
+    text: str | None = None,
     start: str | None = None,
     end: str | None = None,
+    start_time: str | None = None,
+    end_time: str | None = None,
+    startTime: str | None = None,
+    endTime: str | None = None,
+    start_date: str | None = None,
+    end_date: str | None = None,
+    duration_minutes: int | None = None,
+    duration: int | None = None,
+    desc: str | None = None,
+    details: str | None = None,
+    loc: str | None = None,
+    room: str | None = None,
 ) -> dict[str, Any]:
     """Schedule a new calendar event. (Mutating action requiring user confirmation)."""
     # If caller passed a batch of events, route directly to create_events
     if events and isinstance(events, list):
         return create_events(events=events)
 
-    title = title or summary or name or "Scheduled Event"
-    start_iso = start_iso or start or ""
-    end_iso = end_iso or end or ""
+    title = title or summary or name or event or task or text or "Scheduled Event"
+    start_iso = start_iso or start or start_time or startTime or start_date or ""
+    end_iso = end_iso or end or end_time or endTime or end_date or ""
+    description = description or desc or details or ""
+    location = location or loc or room or ""
+
+    if not start_iso:
+        return {
+            "status": "error",
+            "message": "Missing start time for calendar event.",
+        }
+
+    dur = duration_minutes if duration_minutes is not None else duration if duration is not None else 30
+
     try:
         start_dt = _parse_iso(start_iso)
-        end_dt = _parse_iso(end_iso)
-
-        if end_dt <= start_dt:
-            return {
-                "status": "error",
-                "message": "End time must be strictly after start time.",
-            }
+        if end_iso:
+            end_dt = _parse_iso(end_iso)
+            if end_dt <= start_dt:
+                # Handle midnight crossover (e.g. 11:30 PM to 12:00 AM)
+                if end_dt + timedelta(days=1) > start_dt and (end_dt + timedelta(days=1) - start_dt) <= timedelta(hours=14):
+                    end_dt += timedelta(days=1)
+                else:
+                    return {
+                        "status": "error",
+                        "message": "End time must be strictly after start time.",
+                    }
+        else:
+            end_dt = start_dt + timedelta(minutes=dur)
 
         # 1. Attempt live Google Calendar creation if authenticated
+        gcal_warning = None
         gcal_manager = GoogleCalendarManager()
         if gcal_manager.is_logged_in():
             live_res = gcal_manager.create_event(
@@ -335,6 +428,12 @@ def create_event(
             )
             if live_res.get("status") == "success":
                 return live_res
+            gcal_warning = f"Google Calendar API sync failed ({live_res.get('message', 'unknown error')})."
+        elif gcal_manager.token_path.exists() or gcal_manager.is_oauth_configured():
+            gcal_warning = (
+                "Google OAuth authorization is expired or disconnected. "
+                "Run '.venv\\Scripts\\python -m src.tools.login_google_calendar' to re-authenticate."
+            )
 
         # 2. Attempt CalDAV creation if configured
         caldav_mgr = CalDAVManager()
@@ -366,14 +465,24 @@ def create_event(
         events_list.append(new_event)
         save_events(events_list)
 
-        return {
+        res_payload: dict[str, Any] = {
             "status": "success",
             "event_id": event_id,
             "title": new_event["title"],
             "start": new_event["start"],
             "end": new_event["end"],
-            "message": f"Successfully scheduled '{title}' on your calendar.",
+            "saved_to": "local_calendar",
+            "google_calendar_synced": False,
         }
+
+        if gcal_warning:
+            res_payload["google_calendar_status"] = "disconnected"
+            res_payload["warning"] = f"Event saved to local calendar store, but was NOT synced to Google Calendar: {gcal_warning}"
+            res_payload["message"] = f"Saved '{title}' to local calendar, but could not sync to Google Calendar ({gcal_warning})"
+        else:
+            res_payload["message"] = f"Successfully scheduled '{title}' on your calendar."
+
+        return res_payload
     except Exception as e:
         return {
             "status": "error",
@@ -401,11 +510,11 @@ def create_events(events: list[dict[str, Any]]) -> dict[str, Any]:
     errors = []
 
     for evt in events:
-        t = evt.get("title") or evt.get("summary") or evt.get("name") or "Scheduled Event"
-        s_iso = evt.get("start_iso") or evt.get("start") or ""
-        e_iso = evt.get("end_iso") or evt.get("end") or ""
-        loc = evt.get("location", "")
-        desc = evt.get("description", "")
+        t = evt.get("title") or evt.get("summary") or evt.get("name") or evt.get("event") or evt.get("task") or "Scheduled Event"
+        s_iso = evt.get("start_iso") or evt.get("start") or evt.get("start_time") or evt.get("startTime") or ""
+        e_iso = evt.get("end_iso") or evt.get("end") or evt.get("end_time") or evt.get("endTime") or ""
+        loc = evt.get("location") or evt.get("loc") or evt.get("room") or ""
+        desc = evt.get("description") or evt.get("desc") or evt.get("details") or ""
         rec = evt.get("recurrence")
 
         res = create_event(
@@ -424,17 +533,111 @@ def create_events(events: list[dict[str, Any]]) -> dict[str, Any]:
                 "location": loc,
                 "event_id": res.get("event_id"),
                 "html_link": res.get("html_link", ""),
+                "google_calendar_synced": res.get("google_calendar_synced", bool(res.get("html_link"))),
+                "warning": res.get("warning", ""),
             })
         else:
             errors.append({"title": t, "error": res.get("message")})
+
+    has_unsynced = any(not e.get("google_calendar_synced") for e in created)
+    if has_unsynced and any(e.get("warning") for e in created):
+        msg = f"Saved {len(created)} events to local calendar, but could not sync to Google Calendar (OAuth authorization expired or disconnected)."
+    elif created:
+        msg = f"Successfully scheduled {len(created)} events on your calendar."
+    else:
+        msg = "Failed to schedule events."
 
     return {
         "status": "success" if created else "error",
         "created_count": len(created),
         "events": created,
         "errors": errors,
-        "message": f"Successfully scheduled {len(created)} events on your calendar." if created else "Failed to schedule events.",
+        "message": msg,
     }
+
+
+@mcp.tool()
+def sync_local_events_to_google(event_id: str | None = None) -> dict[str, Any]:
+    """Push unsynced local events (e.g. created while offline or before OAuth login) to Google Calendar."""
+    gcal_manager = GoogleCalendarManager()
+    if not gcal_manager.is_logged_in():
+        return {
+            "status": "error",
+            "message": "Google Calendar API is not authenticated. Please run '.venv\\Scripts\\python -m src.tools.login_google_calendar' to log in.",
+        }
+
+    events = load_events()
+    targets = [
+        e for e in events
+        if (e.get("id", "").startswith("evt_") or e.get("source") == "local")
+        and (event_id is None or e.get("id") == event_id)
+    ]
+    if not targets:
+        return {
+            "status": "success",
+            "synced_count": 0,
+            "message": "No unsynced local events found to push to Google Calendar.",
+        }
+
+    synced = []
+    errors = []
+    synced_local_ids = set()
+
+    for evt in targets:
+        res = gcal_manager.create_event(
+            title=evt.get("title", "Event"),
+            start_iso=evt.get("start", ""),
+            end_iso=evt.get("end", ""),
+            description=evt.get("description", ""),
+            location=evt.get("location", ""),
+            recurrence=evt.get("recurrence"),
+        )
+        if res.get("status") == "success":
+            synced.append(res)
+            synced_local_ids.add(evt.get("id"))
+        else:
+            errors.append({"title": evt.get("title"), "error": res.get("message")})
+
+    if synced_local_ids:
+        remaining = [e for e in events if e.get("id") not in synced_local_ids]
+        save_events(remaining)
+
+    return {
+        "status": "success" if synced else "error",
+        "synced_count": len(synced),
+        "synced_events": synced,
+        "errors": errors,
+        "message": f"Successfully synced {len(synced)} events to Google Calendar." if synced else "Failed to sync events to Google Calendar.",
+    }
+
+
+@mcp.tool()
+def authenticate_google_calendar() -> dict[str, Any]:
+    """Launch the Google Calendar OAuth browser authentication flow to connect or refresh account permissions."""
+    gcal = GoogleCalendarManager()
+    if not gcal.is_oauth_configured():
+        return {
+            "status": "error",
+            "message": "Google OAuth client credentials (credentials.json) not found.",
+        }
+    if gcal.is_logged_in():
+        return {
+            "status": "success",
+            "message": "Google Calendar is already authenticated and actively connected.",
+        }
+    try:
+        import subprocess
+        import sys
+        subprocess.Popen([sys.executable, "-m", "src.tools.login_google_calendar"])
+        return {
+            "status": "success",
+            "message": "Launched Google Calendar authentication in your web browser. Please sign in with your Google account to grant calendar access.",
+        }
+    except Exception as e:
+        return {
+            "status": "error",
+            "message": f"Failed to launch authentication flow: {e}",
+        }
 
 
 @mcp.tool()
@@ -476,11 +679,15 @@ def delete_event(event_id: str = "", id: str | None = None) -> dict[str, Any]:
         }
 
     save_events(remaining)
-    return {
+    res_del: dict[str, Any] = {
         "status": "success",
         "deleted_event": found,
         "message": f"Successfully deleted event '{found.get('title', event_id)}'.",
     }
+    if not gcal_manager.is_logged_in() and (gcal_manager.token_path.exists() or gcal_manager.is_oauth_configured()):
+        res_del["google_calendar_synced"] = False
+        res_del["warning"] = "Deleted from local calendar only. Google Calendar was not updated because Google OAuth is expired or disconnected."
+    return res_del
 
 
 @mcp.tool()
@@ -495,6 +702,8 @@ def update_event(
     id: str | None = None,
     name: str | None = None,
     summary: str | None = None,
+    start: str | None = None,
+    end: str | None = None,
 ) -> dict[str, Any]:
     """Update or patch an existing calendar event (e.g. change color, title, time, or location).
     Colors supported: 'red'/'tomato' (11), 'blue'/'blueberry' (9), 'green'/'basil' (10),
@@ -503,6 +712,8 @@ def update_event(
     """
     actual_id = (event_id or id or "").strip()
     actual_title = title or name or summary
+    start_iso = start_iso or start
+    end_iso = end_iso or end
 
     # 1. Attempt live Google Calendar update if authenticated
     gcal_manager = GoogleCalendarManager()
@@ -537,13 +748,17 @@ def update_event(
             if location is not None:
                 events[idx]["location"] = location.strip()
             save_events(events)
-            return {
+            res_upd: dict[str, Any] = {
                 "status": "success",
                 "event_id": events[idx].get("id", actual_id),
                 "title": events[idx]["title"],
                 "color": str(color) if color else None,
                 "message": f"Successfully updated event '{events[idx]['title']}'.",
             }
+            if not gcal_manager.is_logged_in() and (gcal_manager.token_path.exists() or gcal_manager.is_oauth_configured()):
+                res_upd["google_calendar_synced"] = False
+                res_upd["warning"] = "Updated in local calendar only. Google Calendar was not updated because Google OAuth is expired or disconnected."
+            return res_upd
 
     # If ID was not local, check if Google Calendar knows it
     if gcal_manager.is_logged_in():

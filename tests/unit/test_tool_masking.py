@@ -30,6 +30,8 @@ def test_detect_intent_domains_calendar() -> None:
         "check my calendar for upcoming events",
         "find free slots on Friday afternoon",
         "schedule a sync at 2pm",
+        "Do I have any plans for today?",
+        "what is my schedule today?",
     ]
     for q in queries:
         domains = detect_intent_domains(q)
@@ -56,6 +58,8 @@ def test_detect_intent_domains_notes() -> None:
         "add a todo to submit invoice",
         "show me my active tasks and checklist",
         "read my daily review note",
+        "i need to buy paper towel and running shoes",
+        "add milk to my shopping list",
     ]
     for q in queries:
         domains = detect_intent_domains(q)
@@ -66,6 +70,13 @@ def test_detect_intent_domains_notes() -> None:
 def test_detect_intent_domains_multi_domain() -> None:
     query = "check my calendar for tomorrow and add a todo for the client meeting"
     domains = detect_intent_domains(query)
+    assert "calendar" in domains
+    assert "notes" in domains
+
+    briefing_query = "With me, show my morning briefing."
+    briefing_domains = detect_intent_domains(briefing_query)
+    assert "calendar" in briefing_domains
+    assert "notes" in briefing_domains
     assert "calendar" in domains
     assert "notes" in domains
     assert "files_and_coding" not in domains
@@ -158,3 +169,37 @@ def test_dynamic_tool_masking_disabled() -> None:
     # With masking disabled, always returns all tools
     schema = loop.get_active_tools_schema("inspect main.py")
     assert len(schema) == 2
+
+
+def test_detect_intent_time_block_trash() -> None:
+    q = "add a time block at 11pm today to take out the trash"
+    domains = detect_intent_domains(q)
+    assert "calendar" in domains
+    assert "files_and_coding" not in domains
+
+
+def test_detect_intent_lander_and_time_patterns() -> None:
+    q = "Remove the 5PM study session today from my Google Lander."
+    domains = detect_intent_domains(q)
+    assert "calendar" in domains
+    assert "files_and_coding" not in domains
+
+
+def test_context_aware_domain_preservation() -> None:
+    mock_client = MagicMock()
+    loop = AgentLoop(client=mock_client, dynamic_tool_masking=True)
+    loop.register_tool("calendar_delete_event", "Delete event", {}, lambda: None)
+    loop.register_tool("files_read_file", "Read file", {}, lambda: None)
+
+    # Conversation history discusses calendar
+    loop.messages = [
+        {"role": "user", "content": "Schedule a study session at 5pm today."},
+        {"role": "assistant", "content": "Your study session has been scheduled."},
+    ]
+
+    # Even a vague command like "cancel it" retains calendar tools
+    schema = loop.get_active_tools_schema("cancel it")
+    names = {t["function"]["name"] for t in schema}
+    assert "calendar_delete_event" in names
+
+

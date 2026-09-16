@@ -159,15 +159,15 @@ Created automatically by the morning briefing daemon:
 ```markdown
 # Daily Note: Friday, September 5, 2026
 
-## 🌅 Morning Briefing
+## Morning Briefing
 - **Schedule**: 2 meetings scheduled today (Architecture Sync @ 10:00 AM, 1:1 with Alex @ 2:00 PM).
 - **Inbox Triage**: 3 unread emails. 1 urgent item from Sarah regarding budget approvals.
 
-## 🎯 Priorities for Today
+## Priorities for Today
 - [ ] Review PR for MCP bridge
 - [ ] Prep notes for 1:1
 
-## 📝 Scratchpad & Meeting Notes
+## Scratchpad & Meeting Notes
 ```
 
 ---

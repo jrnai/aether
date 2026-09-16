@@ -5,21 +5,29 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta name="description" content="Project Aether - Privacy-First Local Desktop Automation Dashboard">
   <title>Project Aether — Desktop Intelligence</title>
-  <link rel="icon" type="image/x-icon" href="/favicon.ico">
-  <link rel="shortcut icon" type="image/x-icon" href="/favicon.ico">
+  <link rel="icon" type="image/x-icon" href="/favicon.ico?v=2">
+  <link rel="shortcut icon" type="image/x-icon" href="/favicon.ico?v=2">
+  <link rel="apple-touch-icon" href="/static/icon-192.png?v=2">
+  <link rel="manifest" href="/static/manifest.json?v=2">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Outfit:wght@500;600;700;800&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/static/style.css?v=22">
+  <link rel="stylesheet" href="/static/style.css?v=28">
+  <!-- KaTeX for LaTeX Math Equation Rendering (100% Local / Offline) -->
+  <link rel="stylesheet" href="/static/vendor/katex/katex.min.css">
+  <script src="/static/vendor/katex/katex.min.js"></script>
+  <!-- Highlight.js for Code Syntax Highlighting (100% Local / Offline) -->
+  <link rel="stylesheet" href="/static/vendor/highlight/atom-one-dark.min.css">
+  <script src="/static/vendor/highlight/highlight.min.js"></script>
 </head>
 <body>
   <div class="app-layout">
     <!-- Sidebar Navigation -->
     <aside class="sidebar" id="app-sidebar">
       <div class="brand">
-        <div class="brand-badge" onclick="toggleSidebar()" title="Toggle Sidebar" style="cursor: pointer;">
-          <span class="pulse-dot"></span>
-        </div>
+        <button class="brand-badge" type="button" onclick="toggleSidebar()" title="Toggle Sidebar" aria-label="Toggle sidebar">
+          <img src="/static/logo.jpg?v=2" alt="Aether Logo" class="brand-logo-img">
+        </button>
         <div class="brand-text">
           <h1>AETHER</h1>
           <span class="brand-sub">Desktop Intelligence</span>
@@ -100,6 +108,10 @@
           <span id="mail-dot" class="dot dot-green"></span>
           <span id="mail-status-text">Gmail (IMAP/SMTP)</span>
         </div>
+        <button class="status-indicator" id="voice-sidebar-indicator" type="button" onclick="toggleVoiceActivation()" title="Toggle Hands-Free Voice Activation" aria-label="Toggle voice activation">
+          <span id="voice-dot" class="dot dot-gray"></span>
+          <span id="voice-status-text">Voice (Inactive)</span>
+        </button>
       </div>
     </aside>
 
@@ -112,12 +124,17 @@
             <span id="header-weekday" class="header-weekday">Saturday</span>
             <span id="header-date" class="header-date">September 5, 2026</span>
           </div>
+          <span id="top-weather" class="top-weather-widget" title="Current weather"></span>
         </div>
         <div class="top-actions">
           <div id="top-net-badge" class="connection-badge-box" title="Internet Connectivity Health">
             <span id="top-net-dot" class="dot dot-green"></span>
             <span id="top-net-text">Internet (Connected)</span>
           </div>
+          <button id="top-voice-badge" class="connection-badge-box voice-badge-box" type="button" onclick="handleVoiceBadgeClick()" title="Voice: Click to speak or toggle listening" aria-label="Voice assistant">
+            <span id="top-voice-dot" class="dot dot-gray"></span>
+            <span id="top-voice-text">Voice: Inactive</span>
+          </button>
           <div class="model-badge-box">
             <select id="model-select" class="model-select" onchange="changeActiveModel(this.value)" title="Switch Active Ollama Model or Unified Mode">
               <option value="auto">Auto-Route (RTX 5060)</option>
@@ -137,26 +154,70 @@
       <!-- TAB 1: OVERVIEW -->
       <section id="tab-overview" class="tab-panel active">
         <!-- Metric Cards -->
-        <div class="stats-row">
-          <div class="stat-card">
-            <span class="stat-label">TODAY'S SCHEDULE</span>
-            <div id="stat-events-count" class="stat-value">0</div>
-            <span class="stat-meta">Upcoming meetings</span>
+        <!-- Compact Stats Bar -->
+        <div class="stats-bar">
+          <div class="stat-item">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><rect x="3" y="4" width="18" height="18" rx="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line></svg>
+            <span id="stat-events-count" class="stat-num">0</span>
+            <span class="stat-label">events</span>
           </div>
-          <div class="stat-card">
-            <span class="stat-label">FOCUS WINDOWS</span>
-            <div id="stat-free-count" class="stat-value">0</div>
-            <span class="stat-meta">Uninterrupted gaps</span>
+          <span class="stat-sep">·</span>
+          <div class="stat-item">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
+            <span id="stat-free-count" class="stat-num">0</span>
+            <span class="stat-label">focus gaps</span>
           </div>
-          <div class="stat-card">
-            <span class="stat-label">UNREAD EMAILS</span>
-            <div id="stat-email-count" class="stat-value">0</div>
-            <span class="stat-meta">In Gmail inbox</span>
+          <span class="stat-sep">·</span>
+          <div class="stat-item">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"></path><polyline points="22,6 12,13 2,6"></polyline></svg>
+            <span id="stat-email-count" class="stat-num">0</span>
+            <span class="stat-label">unread</span>
           </div>
-          <div class="stat-card">
-            <span class="stat-label">PENDING TASKS</span>
-            <div id="stat-tasks-count" class="stat-value">0</div>
-            <span class="stat-meta">In Obsidian vault</span>
+          <span class="stat-sep">·</span>
+          <div class="stat-item">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><polyline points="9 11 12 14 22 4"></polyline><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"></path></svg>
+            <span id="stat-tasks-count" class="stat-num">0</span>
+            <span class="stat-label">tasks</span>
+          </div>
+        </div>
+
+        <!-- Daily Weather Forecast Card - Kingston Downtown -->
+        <div class="card glass-card weather-card" style="margin-bottom: 1.5rem;">
+          <div class="card-header" style="flex-wrap: wrap; gap: 0.75rem; margin-bottom: 1rem;">
+            <div style="display: flex; align-items: center; gap: 0.75rem;">
+              <div class="weather-icon-badge">
+                <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2">
+                  <circle cx="12" cy="12" r="4"/>
+                  <path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/>
+                </svg>
+              </div>
+              <div>
+                <div style="display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap;">
+                  <h2>Daily Weather Forecast &mdash; <span id="weather-location-title">Kingston Downtown</span></h2>
+                  <button id="btn-edit-weather-loc" class="btn-subtle weather-change-btn" onclick="toggleWeatherLocationInput()" title="Change weather location">
+                    <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2">
+                      <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
+                      <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path>
+                    </svg>
+                    <span>Change</span>
+                  </button>
+                </div>
+                <div id="weather-location-edit-row" class="weather-location-edit-row" style="display: none; margin-top: 0.35rem;">
+                  <div class="weather-location-search-wrap">
+                    <input type="text" id="weather-location-input" class="weather-location-input" aria-label="Search weather location" placeholder="Type city or location (e.g. Tokyo, Toronto)..." autocomplete="off" oninput="handleWeatherLocationInput(this.value)" onkeydown="handleWeatherLocationKeydown(event)">
+                    <div id="weather-location-dropdown" class="weather-location-dropdown" style="display: none;"></div>
+                  </div>
+                  <button type="button" class="btn-subtle" onclick="toggleWeatherLocationInput(false)">Cancel</button>
+                </div>
+                <span id="weather-location-sub" style="font-size: 0.8rem; color: var(--text-dim);">Real-time conditions &amp; hourly breakdown</span>
+              </div>
+            </div>
+            <div id="weather-current-summary" class="weather-summary-pill">
+              <span class="weather-loading-text">Loading weather...</span>
+            </div>
+          </div>
+          <div id="weather-hourly-container" class="weather-hourly-grid">
+            <div class="weather-loading-placeholder">Fetching hourly temperature, wind, and rain chance...</div>
           </div>
         </div>
 
@@ -193,7 +254,7 @@
                 <h2>Quick Tasks</h2>
               </div>
               <div class="quick-add-box">
-                <input type="text" id="quick-task-input" placeholder="Add a quick task..." onkeydown="if(event.key==='Enter') quickAddTask()">
+                <input type="text" id="quick-task-input" aria-label="Quick add task" placeholder="Add a quick task..." onkeydown="if(event.key==='Enter') quickAddTask()">
                 <select id="quick-task-priority-input" class="input-select priority-select quick-priority-select" title="Set task priority">
                   <option value="normal" selected>Normal</option>
                   <option value="important">Important</option>
@@ -220,7 +281,7 @@
                 <span style="font-size: 0.8rem; color: var(--text-dim);">Daily Model Releases, Tools & Research Takeaways</span>
               </div>
             </div>
-            <button class="btn-primary-sm" onclick="switchTab('news')">Open Full News Feed ➔</button>
+            <button class="btn-primary-sm" onclick="switchTab('news')">Open Full News Feed &rarr;</button>
           </div>
           <div id="overview-digest-takeaway" class="digest-takeaway-box" style="margin: 1rem 0 0 0;">
             <div class="digest-takeaway-label">Today's Focus</div>
@@ -307,11 +368,49 @@
       <!-- TAB 2: CALENDAR & FOCUS -->
       <section id="tab-calendar" class="tab-panel">
         <div class="card glass-card">
-          <div class="card-header">
-            <h2>Google Calendar Events</h2>
-            <span id="cal-sync-badge" class="badge badge-success">2-Way Sync Active</span>
+          <div class="card-header" style="flex-wrap: wrap; gap: 0.75rem;">
+            <div style="display: flex; align-items: center; gap: 0.75rem;">
+              <h2>Calendar & Schedule</h2>
+              <span id="cal-sync-badge" class="badge badge-success">2-Way Sync Active</span>
+            </div>
+            <div class="header-actions" style="display: flex; align-items: center; gap: 0.6rem; flex-wrap: wrap;">
+              <!-- View Switcher: Calendar View vs Bullet List View -->
+              <div class="calendar-view-switcher" style="display: flex; gap: 0.35rem;">
+                <button id="cal-view-calendar-btn" class="btn-chip active" onclick="setCalendarView('calendar')" title="Monthly Calendar View">
+                  <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" style="margin-right: 4px; vertical-align: -1px;"><rect x="3" y="4" width="18" height="18" rx="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line></svg>
+                  Calendar View
+                </button>
+                <button id="cal-view-list-btn" class="btn-chip" onclick="setCalendarView('list')" title="Detailed Bullet List View">
+                  <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" style="margin-right: 4px; vertical-align: -1px;"><line x1="8" y1="6" x2="21" y2="6"></line><line x1="8" y1="12" x2="21" y2="12"></line><line x1="8" y1="18" x2="21" y2="18"></line><circle cx="4" cy="6" r="1.5" fill="currentColor"></circle><circle cx="4" cy="12" r="1.5" fill="currentColor"></circle><circle cx="4" cy="18" r="1.5" fill="currentColor"></circle></svg>
+                  Bullet List View
+                </button>
+              </div>
+              <button id="btn-refresh-calendar" class="btn-subtle" onclick="fetchCalendar(true)" title="Sync Calendar">
+                <span class="refresh-icon">↻</span> Sync
+              </button>
+            </div>
           </div>
-          <div id="calendar-events-table" class="events-container">
+
+          <!-- 1. Monthly Calendar Grid View -->
+          <div id="calendar-grid-view" class="calendar-grid-wrapper">
+            <div class="cal-nav-bar">
+              <div class="cal-nav-left">
+                <h3 id="cal-month-title" class="cal-month-title">Loading...</h3>
+                <span id="cal-event-count-badge" class="badge badge-emerald" style="font-size: 0.75rem;">0 Events</span>
+              </div>
+              <div class="cal-nav-controls">
+                <button class="btn-secondary" onclick="prevMonth()" title="Previous Month">&lt;</button>
+                <button class="btn-secondary" onclick="goToToday()" title="Jump to Today">Today</button>
+                <button class="btn-secondary" onclick="nextMonth()" title="Next Month">&gt;</button>
+              </div>
+            </div>
+            <div id="calendar-month-grid" class="calendar-month-grid">
+              <div class="loading-spinner" style="grid-column: span 7; padding: 2rem;">Loading calendar grid...</div>
+            </div>
+          </div>
+
+          <!-- 2. Bullet List / Table View (Current) -->
+          <div id="calendar-events-table" class="events-container" style="display: none;">
             <div class="loading-spinner">Loading events...</div>
           </div>
         </div>
@@ -343,7 +442,7 @@
               <button id="btn-sync-emails" class="btn-secondary" onclick="fetchEmails(true)" title="Sync latest emails from IMAP / Outlook">
                 <span id="sync-emails-icon"></span> Sync Live
               </button>
-              <span class="badge badge-indigo">IMAP SSL + Graph</span>
+              <span class="badge badge-primary">IMAP SSL + Graph</span>
             </div>
           </div>
 
@@ -374,10 +473,11 @@
             <input 
               type="text" 
               id="email-search-input" 
+              aria-label="Search emails"
               placeholder="Search emails by sender, subject, or content..." 
               oninput="onEmailSearch(this.value)"
             >
-            <button id="btn-clear-email-search" class="btn-secondary" onclick="clearEmailSearch()" style="display:none; padding: 0.4rem 0.6rem;">✕</button>
+            <button id="btn-clear-email-search" class="btn-secondary" onclick="clearEmailSearch()" style="display:none; padding: 0.4rem 0.6rem;">&times;</button>
           </div>
 
           <div id="emails-list" class="emails-container">
@@ -408,8 +508,8 @@
 
           <!-- Add Task Form -->
           <div class="task-input-bar">
-            <input type="text" id="task-desc-input" placeholder="Task description (e.g. 'Finish SC3021 Report #study')" class="input-main" onkeydown="if(event.key==='Enter') addNewTask()">
-            <input type="date" id="task-due-input" class="input-date" onkeydown="if(event.key==='Enter') addNewTask()">
+            <input type="text" id="task-desc-input" aria-label="Task description" placeholder="Task description (e.g. 'Finish SC3021 Report #study')" class="input-main" onkeydown="if(event.key==='Enter') addNewTask()">
+            <input type="date" id="task-due-input" aria-label="Task due date" class="input-date" onkeydown="if(event.key==='Enter') addNewTask()">
             <select id="task-priority-input" class="input-select priority-select">
               <option value="normal" selected>Normal Priority</option>
               <option value="important">Important Priority</option>
@@ -430,7 +530,7 @@
           <div class="card-header">
             <h2>Local AI Assistant</h2>
             <div style="display:flex; align-items:center; gap:0.6rem;">
-              <span id="chat-active-model-badge" class="badge badge-purple" title="Active Model / Routing Strategy">Auto-Route</span>
+              <span id="chat-active-model-badge" class="badge badge-primary" title="Active Model / Routing Strategy">Auto-Route</span>
               <button id="btn-clear-chat" class="btn-secondary" onclick="clearChatHistory()" title="Clear conversation history">Clear Chat</button>
               <span class="badge badge-emerald">Privacy-First · Web Enabled</span>
             </div>
@@ -449,7 +549,7 @@
           <div id="chat-image-preview-bar" class="chat-image-preview-bar" style="display: none;"></div>
 
           <div class="chat-input-bar">
-            <input type="file" id="chat-file-input" accept="image/*" multiple style="display: none;" onchange="handleImageFileSelect(event)">
+            <input type="file" id="chat-file-input" aria-label="Attach file" accept="image/*" multiple style="display: none;" onchange="handleImageFileSelect(event)">
             <button id="btn-attach-image" class="btn-attach" onclick="triggerImageAttachment()" title="Attach image or paste screenshot (Ctrl+V)">
               <svg class="attach-svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                 <rect width="18" height="18" x="3" y="3" rx="2" ry="2"/>
@@ -457,7 +557,21 @@
                 <path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"/>
               </svg>
             </button>
-            <input type="text" id="chat-input" placeholder="Ask Aether, attach image, or paste screenshot (Ctrl+V)..." onkeydown="if(event.key==='Enter') sendChatMessage()">
+            <button id="btn-snap-screen" class="btn-attach" onclick="snapDesktopScreen()" title="Snap Desktop Screen (Ctrl+Shift+S) - Capture active desktop into prompt">
+              <svg class="attach-svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <rect width="20" height="14" x="2" y="3" rx="2"/>
+                <line x1="8" x2="16" y1="21" y2="21"/>
+                <line x1="12" x2="12" y1="17" y2="21"/>
+              </svg>
+            </button>
+            <input type="text" id="chat-input" aria-label="Chat message" placeholder="Ask Aether, attach image, or paste screenshot (Ctrl+V)..." onkeydown="if(event.key==='Enter') sendChatMessage()">
+            <button id="btn-voice-input" class="btn-attach" onclick="listenNow()" title="Speak now (direct voice input)">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/>
+                <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
+                <line x1="12" x2="12" y1="19" y2="22"/>
+              </svg>
+            </button>
             <button id="btn-send-chat" class="btn-primary" onclick="sendChatMessage()">Send</button>
           </div>
         </div>
@@ -467,20 +581,20 @@
       <section id="tab-files" class="tab-panel">
         <div class="files-workspace-layout">
           <!-- Left Edge Dock: Shown when File Explorer is collapsed -->
-          <div id="explorer-collapsed-dock" class="studio-edge-dock dock-left" onclick="toggleFileExplorerPanel()" title="Expand File Explorer (Alt+E / Ctrl+Shift+E)">
-            <button class="dock-edge-btn" title="Expand File Explorer (Alt+E)">
+          <button id="explorer-collapsed-dock" class="studio-edge-dock dock-left" aria-label="Open file explorer" onclick="toggleFileExplorerPanel()" title="Expand File Explorer (Alt+E / Ctrl+Shift+E)">
+            <span class="dock-edge-btn" title="Expand File Explorer (Alt+E)">
               <span class="dock-arrow">▶</span>
-            </button>
+            </span>
             <span class="dock-vertical-label">Files</span>
-          </div>
+          </button>
 
           <!-- Left: File Explorer -->
           <div class="card glass-card file-explorer-card">
             <div class="explorer-top-bar">
-              <div class="explorer-title-box" onclick="promptChangeWorkspace()" title="Click to change workspace folder (paste path or open File Explorer)" style="cursor: pointer;">
+              <button class="explorer-title-box" type="button" onclick="promptChangeWorkspace()" title="Click to change workspace folder (paste path or open File Explorer)" aria-label="Change workspace">
                 <span class="explorer-title">Workspace</span>
                 <span id="current-workspace-name" class="workspace-badge" title="Click to change folder">aether</span>
-              </div>
+              </button>
               <button class="icon-btn" onclick="toggleFileExplorerPanel()" title="Collapse File Explorer">◀</button>
             </div>
 
@@ -494,7 +608,7 @@
             </div>
 
             <div class="explorer-search-box">
-              <input type="text" id="file-search-input" placeholder="Search files or grep..." oninput="onFileSearchInput(this.value)">
+              <input type="text" id="file-search-input" aria-label="Search files" placeholder="Search files or grep..." oninput="onFileSearchInput(this.value)">
               <button id="btn-toggle-grep" class="chip-toggle" onclick="toggleGrepSearch()" title="Toggle Grep Content Search">Grep</button>
             </div>
 
@@ -551,7 +665,7 @@
 
               <div class="editor-canvas-wrapper">
                 <div id="editor-line-numbers" class="editor-line-numbers">1</div>
-                <textarea id="code-editor-textarea" class="code-editor-textarea" spellcheck="false" placeholder="Code content..." oninput="onEditorContentChange()" onscroll="syncEditorScroll()" onkeydown="handleEditorKeydown(event)"></textarea>
+                <textarea id="code-editor-textarea" class="code-editor-textarea" aria-label="Code editor" spellcheck="false" placeholder="Code content..." oninput="onEditorContentChange()" onscroll="syncEditorScroll()" onkeydown="handleEditorKeydown(event)"></textarea>
               </div>
 
               <div class="editor-status-bar">
@@ -578,7 +692,7 @@
                 <div class="terminal-header-actions">
                   <button id="btn-terminal-stop" class="terminal-header-btn danger" onclick="cancelTerminalCommand()" title="Stop running process" style="display: none;">Stop</button>
                   <button id="btn-terminal-clear" class="terminal-header-btn" onclick="clearTerminalOutput()" title="Clear terminal screen (Ctrl+K)">Clear</button>
-                  <button id="btn-terminal-close" class="terminal-header-btn" onclick="toggleIntegratedTerminal(false)" title="Close Terminal Panel">✕</button>
+                  <button id="btn-terminal-close" class="terminal-header-btn" onclick="toggleIntegratedTerminal(false)" title="Close Terminal Panel">&times;</button>
                 </div>
               </div>
               <div id="terminal-output" class="terminal-output">
@@ -590,6 +704,7 @@
                 <input
                   type="text"
                   id="terminal-input"
+                  aria-label="Terminal command"
                   class="terminal-input"
                   placeholder="Type a command (e.g. python main.py, pytest)..."
                   autocomplete="off"
@@ -608,24 +723,25 @@
               <div class="coder-title-box">
                 <span class="coder-status-dot ready" id="coder-status-dot"></span>
                 <span class="coder-title">AI Coding Agent</span>
-                <span class="workspace-badge" id="coder-model-badge">qwen2.5-coder</span>
               </div>
               <div class="coder-header-actions">
                 <button class="chip-toggle active" id="btn-coder-mode" onclick="toggleCoderMode()" title="Toggle Plan Mode (Plan first, ask for approval)">Plan Mode</button>
                 <button class="icon-btn" onclick="clearCoderHistory()" title="Clear Agent History">Clear</button>
-                <button class="icon-btn" onclick="toggleCoderAgentPanel()" title="Collapse Agent Panel">▶</button>
+                <button class="icon-btn btn-collapse-coder" onclick="toggleCoderAgentPanel()" title="Collapse Agent Panel">
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"></polyline></svg>
+                </button>
               </div>
             </div>
 
             <!-- Active Context Bar -->
             <div class="coder-context-bar" id="coder-context-bar">
               <span class="context-label">Context:</span>
-              <span id="coder-active-file-pill" class="context-pill active" onclick="toggleActiveFileContext()" title="Click to include/exclude active file context">
+              <button type="button" id="coder-active-file-pill" class="context-pill active" onclick="toggleActiveFileContext()" title="Click to include/exclude active file context">
                 @<span id="coder-context-file-name">None</span>
-              </span>
-              <span class="context-pill ws-pill" id="coder-context-ws-pill" onclick="promptChangeWorkspace()" title="Active Workspace. Click to switch workspace folder.">
+              </button>
+              <button type="button" class="context-pill ws-pill" id="coder-context-ws-pill" onclick="promptChangeWorkspace()" title="Active Workspace. Click to switch workspace folder.">
                 @ws:<span id="coder-context-ws-name">aether</span>
-              </span>
+              </button>
             </div>
 
             <!-- Coder Messages & Plan Cards -->
@@ -645,7 +761,7 @@
             <!-- Prompt Input Area -->
             <div class="coder-input-wrapper">
               <div class="coder-input-box">
-                <textarea id="coder-prompt-input" placeholder="Ask coding agent to plan, refactor, or test... (Ctrl+Enter to send)" rows="2" onkeydown="handleCoderInputKeydown(event)"></textarea>
+                <textarea id="coder-prompt-input" aria-label="AI coding prompt" placeholder="Ask coding agent to plan, refactor, or test... (Ctrl+Enter to send)" rows="2" onkeydown="handleCoderInputKeydown(event)"></textarea>
                 <div class="coder-input-actions">
                   <span class="shortcut-hint">Ctrl+Enter</span>
                   <button id="btn-send-coder" class="btn-primary-sm" onclick="sendCoderMessage()">Plan & Run</button>
@@ -655,19 +771,69 @@
           </div>
 
           <!-- Right Edge Dock: Shown when Agent is collapsed -->
-          <div id="agent-collapsed-dock" class="studio-edge-dock dock-right" onclick="toggleCoderAgentPanel()" title="Open AI Coding Agent (Alt+A / Ctrl+Shift+I)">
-            <button class="dock-edge-btn" title="Open AI Coding Agent (Alt+A)">
+          <button id="agent-collapsed-dock" class="studio-edge-dock dock-right" aria-label="Open AI agent panel" onclick="toggleCoderAgentPanel()" title="Open AI Coding Agent (Alt+A / Ctrl+Shift+I)">
+            <span class="dock-edge-btn" title="Open AI Coding Agent (Alt+A)">
               <span class="dock-arrow">◀</span>
               <span class="dock-icon"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="10" rx="2"/><circle cx="12" cy="5" r="2"/><path d="M12 7v4"/><line x1="8" y1="16" x2="8" y2="16"/><line x1="16" y1="16" x2="16" y2="16"/></svg></span>
-            </button>
+            </span>
             <span class="dock-vertical-label">Agent</span>
-          </div>
+          </button>
         </div>
       </section>
     </main>
   </div>
 
+
+
+  <!-- Siri-Style Blurred Voice Assistant Overlay -->
+  <div id="voice-assistant-overlay" class="voice-assistant-overlay" style="display: none;">
+    <div class="voice-overlay-content">
+      <button class="voice-overlay-close-btn" type="button" onclick="closeVoiceOverlay()" title="Close Voice Assistant (Esc)" aria-label="Close Voice Assistant">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <line x1="18" y1="6" x2="6" y2="18"></line>
+          <line x1="6" y1="6" x2="18" y2="18"></line>
+        </svg>
+      </button>
+
+      <!-- Central Glowing Aether Logo & Pulse Orb -->
+      <div class="voice-orb-container">
+        <div class="voice-orb-pulse-ring ring-1"></div>
+        <div class="voice-orb-pulse-ring ring-2"></div>
+        <div class="voice-orb-core">
+          <img src="/static/logo.jpg?v=2" alt="Aether Celestial Deity" class="voice-orb-logo-img">
+        </div>
+      </div>
+
+      <div class="voice-overlay-brand">
+        <h2 class="voice-brand-title">AETHER</h2>
+        <span class="voice-brand-sub">Voice Intelligence</span>
+      </div>
+
+      <!-- Live Status Badge -->
+      <div id="voice-overlay-status" class="voice-overlay-status-badge status-listening">
+        <span id="voice-overlay-status-dot" class="voice-status-dot"></span>
+        <span id="voice-overlay-status-text">Listening...</span>
+      </div>
+
+      <!-- User Transcribed Query -->
+      <div id="voice-overlay-query-box" class="voice-overlay-query-box" style="display: none;">
+        <div class="voice-query-label">You</div>
+        <div id="voice-overlay-query-text" class="voice-query-text"></div>
+      </div>
+
+      <!-- Text Answer Container Below Logo -->
+      <div id="voice-overlay-answer-box" class="voice-overlay-answer-box" style="display: none;">
+        <div class="voice-answer-header">
+          <span class="voice-answer-label">Aether Response</span>
+        </div>
+        <div id="voice-overlay-answer-text" class="voice-answer-text"></div>
+      </div>
+
+      <div class="voice-overlay-hint">Press Esc or click outside to dismiss</div>
+    </div>
+  </div>
+
   <div id="toast-container"></div>
-  <script type="module" src="/static/js/app.js?v=23"></script>
+  <script type="module" src="/static/js/app.js?v=30"></script>
 </body>
 </html>

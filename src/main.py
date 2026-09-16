@@ -40,12 +40,15 @@ def main() -> None:
     parser.add_argument("--open", "-o", action="store_true", help="Automatically open browser when starting portal")
     parser.add_argument("--host", default="127.0.0.1", help="Web dashboard host (default: 127.0.0.1)")
     parser.add_argument("--port", "-p", type=int, default=8000, help="Web dashboard port (default: 8000)")
+    parser.add_argument("--voice", action="store_true", help="Enable hands-free voice activation")
     args = parser.parse_args()
 
     # Load unified configuration with CLI overrides
     cli_overrides = {}
     if args.model:
         cli_overrides["llm"] = {"model": args.model}
+    if args.voice:
+        cli_overrides["voice"] = {"enabled": True}
 
     cfg = get_config(config_path=args.config, cli_overrides=cli_overrides)
 

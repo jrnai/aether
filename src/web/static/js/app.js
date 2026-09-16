@@ -13,10 +13,24 @@ import {
 } from './store.js';
 
 import {
+  closeVoiceOverlay,
   copyBriefing,
   fetchOverview,
+  fetchVoiceStatus,
+  fetchWeather,
+  handleVoiceBadgeClick,
+  handleVoiceOverlayBackdropClick,
+  handleWeatherLocationInput,
+  handleWeatherLocationKeydown,
+  initVoiceEventsSSE,
+  listenNow,
   loadCachedBriefingFromStorage,
+  openVoiceOverlay,
   regenerateBriefing,
+  saveWeatherLocationManual,
+  selectWeatherLocation,
+  toggleVoiceActivation,
+  toggleWeatherLocationInput,
 } from './modules/overview.js';
 
 import {
@@ -28,6 +42,10 @@ import {
 
 import {
   fetchCalendar,
+  setCalendarView,
+  prevMonth,
+  nextMonth,
+  goToToday,
 } from './modules/calendar.js';
 
 import {
@@ -64,6 +82,8 @@ import {
   loadChatHistory,
   removeStagedImage,
   sendChatMessage,
+  snapDesktopScreen,
+  toggleTraceDrawer,
   triggerImageAttachment,
 } from './modules/chat.js';
 
@@ -233,6 +253,7 @@ export async function refreshAllData() {
   try {
     const promises = [
       fetchOverview(),
+      fetchWeather(true),
       fetchCalendar(),
       fetchEmails(),
       fetchTasks(),
@@ -285,6 +306,26 @@ let isDisconnectBannerActive = false;
 let disconnectCountdownTimer = null;
 let keepWindowOpenDismissed = false;
 
+export function initWindowLifecycle() {
+  try {
+    if (navigator.sendBeacon) {
+      navigator.sendBeacon('/api/app/cancel_exit');
+    } else {
+      fetch('/api/app/cancel_exit', { method: 'POST' }).catch(() => {});
+    }
+  } catch (_) {}
+
+  window.addEventListener('pagehide', () => {
+    try {
+      if (navigator.sendBeacon) {
+        navigator.sendBeacon('/api/app/exit');
+      } else {
+        fetch('/api/app/exit', { method: 'POST', keepalive: true }).catch(() => {});
+      }
+    } catch (_) {}
+  });
+}
+
 export function initBackendHeartbeatMonitor() {
   setTimeout(() => {
     setInterval(checkBackendHeartbeat, 4000);
@@ -334,25 +375,7 @@ export function onBackendTerminated() {
   if (!banner) {
     banner = document.createElement('div');
     banner.id = 'backend-disconnect-banner';
-    banner.style.cssText = `
-      position: fixed;
-      top: 16px;
-      left: 50%;
-      transform: translateX(-50%);
-      z-index: 999999;
-      background: #18181b;
-      border: 1px solid #ef4444;
-      box-shadow: 0 10px 30px rgba(0,0,0,0.8), 0 0 20px rgba(239,68,68,0.3);
-      color: #f8fafc;
-      padding: 14px 22px;
-      border-radius: 10px;
-      display: flex;
-      align-items: center;
-      gap: 14px;
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-      font-size: 14px;
-      user-select: none;
-    `;
+    banner.className = 'disconnect-banner';
     document.body.appendChild(banner);
   }
 
@@ -410,6 +433,10 @@ export function dismissDisconnectBanner(permanent = false) {
 // Global Keyboard Shortcuts
 // =============================================================================
 window.addEventListener('keydown', (e) => {
+  // Dismiss voice overlay and interrupt mid-response: Escape
+  if (e.key === 'Escape') {
+    closeVoiceOverlay();
+  }
   // Toggle Coder Agent: Ctrl+Shift+I or Alt+A
   if ((e.ctrlKey && e.shiftKey && e.key.toLowerCase() === 'i') || (e.altKey && e.key.toLowerCase() === 'a')) {
     e.preventDefault();
@@ -432,8 +459,11 @@ document.addEventListener('DOMContentLoaded', () => {
   loadChatHistory();
   initChatMediaHandlers();
   initEditorKeybindings();
+  initWindowLifecycle();
   initBackendHeartbeatMonitor();
   initCoderAgent();
+  fetchVoiceStatus();
+  initVoiceEventsSSE();
 
   // Restore explorer and terminal preferences
   try {
@@ -457,6 +487,13 @@ document.addEventListener('DOMContentLoaded', () => {
       fetchOverview();
     }
   }, 30000);
+
+  // Periodic voice status poll (every 3s when visible)
+  setInterval(() => {
+    if (isTabVisible()) {
+      fetchVoiceStatus();
+    }
+  }, 3000);
 
   // Real-time network listeners
   window.addEventListener('online', () => {
@@ -486,9 +523,22 @@ window.dismissDisconnectBanner = dismissDisconnectBanner;
 
 // Overview
 window.fetchOverview = fetchOverview;
+window.fetchWeather = fetchWeather;
+window.toggleWeatherLocationInput = toggleWeatherLocationInput;
+window.saveWeatherLocationManual = saveWeatherLocationManual;
+window.handleWeatherLocationInput = handleWeatherLocationInput;
+window.handleWeatherLocationKeydown = handleWeatherLocationKeydown;
+window.selectWeatherLocation = selectWeatherLocation;
 window.regenerateBriefing = regenerateBriefing;
 window.copyBriefing = copyBriefing;
 window.loadCachedBriefingFromStorage = loadCachedBriefingFromStorage;
+window.toggleVoiceActivation = toggleVoiceActivation;
+window.fetchVoiceStatus = fetchVoiceStatus;
+window.listenNow = listenNow;
+window.handleVoiceBadgeClick = handleVoiceBadgeClick;
+window.openVoiceOverlay = openVoiceOverlay;
+window.closeVoiceOverlay = closeVoiceOverlay;
+window.handleVoiceOverlayBackdropClick = handleVoiceOverlayBackdropClick;
 
 // News
 window.fetchNews = fetchNews;
@@ -498,6 +548,10 @@ window.refreshAiDigest = refreshAiDigest;
 
 // Calendar
 window.fetchCalendar = fetchCalendar;
+window.setCalendarView = setCalendarView;
+window.prevMonth = prevMonth;
+window.nextMonth = nextMonth;
+window.goToToday = goToToday;
 
 // Mail
 window.fetchEmails = fetchEmails;
@@ -526,9 +580,11 @@ window.changeActiveModel = changeActiveModel;
 window.sendChatMessage = sendChatMessage;
 window.loadChatHistory = loadChatHistory;
 window.clearChatHistory = clearChatHistory;
+window.toggleTraceDrawer = toggleTraceDrawer;
 window.triggerImageAttachment = triggerImageAttachment;
 window.handleImageFileSelect = handleImageFileSelect;
 window.removeStagedImage = removeStagedImage;
+window.snapDesktopScreen = snapDesktopScreen;
 
 // Editor
 window.loadFilesTree = loadFilesTree;
@@ -583,3 +639,46 @@ window.clearCoderHistory = clearCoderHistory;
 window.showToast = showToast;
 window.renderMarkdown = renderMarkdown;
 window.escapeHtml = escapeHtml;
+
+window.copyCodeBlock = function(btn) {
+  try {
+    const wrapper = btn.closest('.code-block-wrapper');
+    if (!wrapper) return;
+    const codeEl = wrapper.querySelector('code');
+    const text = codeEl ? codeEl.innerText : '';
+    if (!text) return;
+    const onSuccess = () => {
+      btn.classList.add('copied');
+      const textSpan = btn.querySelector('.copy-text');
+      if (textSpan) textSpan.textContent = 'Copied!';
+      setTimeout(() => {
+        btn.classList.remove('copied');
+        if (textSpan) textSpan.textContent = 'Copy';
+      }, 2000);
+    };
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text).then(onSuccess).catch(() => {
+        fallbackCopy(text, onSuccess);
+      });
+    } else {
+      fallbackCopy(text, onSuccess);
+    }
+  } catch (err) {
+    console.warn('Copy code block error:', err);
+  }
+};
+
+function fallbackCopy(text, cb) {
+  const ta = document.createElement('textarea');
+  ta.value = text;
+  ta.style.position = 'fixed';
+  ta.style.opacity = '0';
+  document.body.appendChild(ta);
+  ta.select();
+  try {
+    document.execCommand('copy');
+    if (cb) cb();
+  } finally {
+    document.body.removeChild(ta);
+  }
+}

@@ -1,0 +1,129 @@
+{
+  "timestamp": "2026-09-15T01:05:54Z",
+  "duration_ms": 29.8,
+  "all_passed": true,
+  "intent_routing": {
+    "suite": "intent_routing",
+    "total": 50,
+    "passed": 50,
+    "failed": 0,
+    "accuracy_pct": 100.0,
+    "duration_ms": 23.61,
+    "failures": [],
+    "domain_breakdown": {
+      "files_and_coding": {
+        "tp": 10,
+        "fp": 0,
+        "fn": 0
+      },
+      "calendar": {
+        "tp": 11,
+        "fp": 0,
+        "fn": 0
+      },
+      "mail": {
+        "tp": 10,
+        "fp": 0,
+        "fn": 0
+      },
+      "notes": {
+        "tp": 9,
+        "fp": 0,
+        "fn": 0
+      },
+      "web": {
+        "tp": 6,
+        "fp": 0,
+        "fn": 0
+      },
+      "image_generation": {
+        "tp": 4,
+        "fp": 0,
+        "fn": 0
+      },
+      "fallback": {
+        "tp": 6,
+        "fp": 0,
+        "fn": 0
+      }
+    }
+  },
+  "injection_defense": {
+    "suite": "injection_defense",
+    "total": 25,
+    "blocked": 25,
+    "bypassed": 0,
+    "defense_rate_pct": 100.0,
+    "duration_ms": 4.36,
+    "layer_breakdown": {
+      "prompt_guard": {
+        "total": 10,
+        "blocked": 10
+      },
+      "command_sandbox": {
+        "total": 10,
+        "blocked": 10
+      },
+      "hitl_interceptor": {
+        "total": 5,
+        "blocked": 5
+      }
+    },
+    "failures": []
+  },
+  "parameter_normalization": {
+    "suite": "parameter_normalization",
+    "total": 30,
+    "passed": 30,
+    "failed": 0,
+    "pass_rate_pct": 100.0,
+    "duration_ms": 0.09,
+    "failures": []
+  },
+  "token_savings": {
+    "suite": "token_savings",
+    "monolithic_tools_count": 39,
+    "monolithic_tokens": 4680,
+    "average_masked_tokens": 780,
+    "average_saved_tokens": 3900,
+    "average_reduction_pct": 83.3,
+    "per_domain_savings": {
+      "files_and_coding": {
+        "tools_count": 13,
+        "tokens": 1560,
+        "tokens_saved": 3120,
+        "reduction_pct": 66.7
+      },
+      "calendar": {
+        "tools_count": 9,
+        "tokens": 1080,
+        "tokens_saved": 3600,
+        "reduction_pct": 76.9
+      },
+      "mail": {
+        "tools_count": 6,
+        "tokens": 720,
+        "tokens_saved": 3960,
+        "reduction_pct": 84.6
+      },
+      "notes": {
+        "tools_count": 5,
+        "tokens": 600,
+        "tokens_saved": 4080,
+        "reduction_pct": 87.2
+      },
+      "web": {
+        "tools_count": 5,
+        "tokens": 600,
+        "tokens_saved": 4080,
+        "reduction_pct": 87.2
+      },
+      "image_generation": {
+        "tools_count": 1,
+        "tokens": 120,
+        "tokens_saved": 4560,
+        "reduction_pct": 97.4
+      }
+    }
+  }
+}

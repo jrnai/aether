@@ -1,0 +1,302 @@
+[
+  {
+    "id": "intent-01",
+    "query": "Schedule a team sync tomorrow at 2pm",
+    "expected_domains": ["calendar"],
+    "description": "Direct calendar event scheduling"
+  },
+  {
+    "id": "intent-02",
+    "query": "What meetings do I have on my calendar for Friday?",
+    "expected_domains": ["calendar"],
+    "description": "Calendar day inspection"
+  },
+  {
+    "id": "intent-03",
+    "query": "Find free slots on Thursday afternoon",
+    "expected_domains": ["calendar"],
+    "description": "Free time availability search"
+  },
+  {
+    "id": "intent-04",
+    "query": "Do I have any plans for today?",
+    "expected_domains": ["calendar"],
+    "description": "Daily schedule query"
+  },
+  {
+    "id": "intent-05",
+    "query": "What is my schedule today?",
+    "expected_domains": ["calendar"],
+    "description": "Agenda check"
+  },
+  {
+    "id": "intent-06",
+    "query": "Block out time for deep work on Wednesday morning",
+    "expected_domains": ["calendar"],
+    "description": "Calendar timeblocking"
+  },
+  {
+    "id": "intent-07",
+    "query": "Add an event titled Client Presentation for Monday at 10am",
+    "expected_domains": ["calendar"],
+    "description": "Calendar event creation"
+  },
+  {
+    "id": "intent-08",
+    "query": "Am I free between 3pm and 5pm tomorrow?",
+    "expected_domains": ["calendar"],
+    "description": "Slot collision verification"
+  },
+  {
+    "id": "intent-09",
+    "query": "Check my unread emails in the inbox",
+    "expected_domains": ["mail"],
+    "description": "Fetch unread inbox emails"
+  },
+  {
+    "id": "intent-10",
+    "query": "Draft an email to Sarah with subject Q3 Roadmap",
+    "expected_domains": ["mail"],
+    "description": "Email draft staging"
+  },
+  {
+    "id": "intent-11",
+    "query": "Did I get any mail from Alice regarding the budget?",
+    "expected_domains": ["mail"],
+    "description": "Mail sender search"
+  },
+  {
+    "id": "intent-12",
+    "query": "Compose a reply to the latest message from tech lead",
+    "expected_domains": ["mail"],
+    "description": "Email reply drafting"
+  },
+  {
+    "id": "intent-13",
+    "query": "Read incoming emails received today",
+    "expected_domains": ["mail"],
+    "description": "Daily email triage"
+  },
+  {
+    "id": "intent-14",
+    "query": "Show unread messages in my inbox",
+    "expected_domains": ["mail"],
+    "description": "Unread messages query"
+  },
+  {
+    "id": "intent-15",
+    "query": "Send email notification to operations team",
+    "expected_domains": ["mail"],
+    "description": "Email dispatch intent"
+  },
+  {
+    "id": "intent-16",
+    "query": "Add a todo to submit quarterly tax receipts",
+    "expected_domains": ["notes"],
+    "description": "Task creation"
+  },
+  {
+    "id": "intent-17",
+    "query": "Show me my active tasks and checklist",
+    "expected_domains": ["notes"],
+    "description": "Todo list inspection"
+  },
+  {
+    "id": "intent-18",
+    "query": "Read my daily note from yesterday",
+    "expected_domains": ["notes"],
+    "description": "Daily notes inspection"
+  },
+  {
+    "id": "intent-19",
+    "query": "Add milk and coffee beans to my shopping list",
+    "expected_domains": ["notes"],
+    "description": "Shopping list update"
+  },
+  {
+    "id": "intent-20",
+    "query": "Mark the task Finish presentation slides as completed",
+    "expected_domains": ["notes"],
+    "description": "Task completion toggle"
+  },
+  {
+    "id": "intent-21",
+    "query": "What tasks are remaining on my checklist?",
+    "expected_domains": ["notes"],
+    "description": "Checklist query"
+  },
+  {
+    "id": "intent-22",
+    "query": "Remember to buy extra batteries at the store",
+    "expected_domains": ["notes"],
+    "description": "Shopping note capture"
+  },
+  {
+    "id": "intent-23",
+    "query": "Inspect src/agent/loop.py and find where latency is measured",
+    "expected_domains": ["files_and_coding"],
+    "description": "Source code inspection"
+  },
+  {
+    "id": "intent-24",
+    "query": "Run pytest on tests/unit to verify the patch",
+    "expected_domains": ["files_and_coding"],
+    "description": "Test suite command execution"
+  },
+  {
+    "id": "intent-25",
+    "query": "Check git status and show git diff in the repo",
+    "expected_domains": ["files_and_coding"],
+    "description": "Git repository inspection"
+  },
+  {
+    "id": "intent-26",
+    "query": "Refactor the authentication function in server.py",
+    "expected_domains": ["files_and_coding"],
+    "description": "Code refactoring"
+  },
+  {
+    "id": "intent-27",
+    "query": "Create a new file called tests/test_parser.py",
+    "expected_domains": ["files_and_coding"],
+    "description": "File creation"
+  },
+  {
+    "id": "intent-28",
+    "query": "Execute python -c 'print(1+1)' in the terminal",
+    "expected_domains": ["files_and_coding"],
+    "description": "Terminal command execution"
+  },
+  {
+    "id": "intent-29",
+    "query": "Fix the syntax bug in the CSS styles",
+    "expected_domains": ["files_and_coding"],
+    "description": "Bug fix in styles"
+  },
+  {
+    "id": "intent-30",
+    "query": "Search for files ending in .ts inside the directory",
+    "expected_domains": ["files_and_coding"],
+    "description": "Directory file scan"
+  },
+  {
+    "id": "intent-31",
+    "query": "What is the weather forecast for Seattle tomorrow?",
+    "expected_domains": ["web"],
+    "description": "Weather forecast lookup"
+  },
+  {
+    "id": "intent-32",
+    "query": "What is the current temperature and will it rain today?",
+    "expected_domains": ["web"],
+    "description": "Weather conditions check"
+  },
+  {
+    "id": "intent-33",
+    "query": "Search the web for recent announcements on Python 3.14",
+    "expected_domains": ["web"],
+    "description": "Online search query"
+  },
+  {
+    "id": "intent-34",
+    "query": "Fetch the web page at https://news.ycombinator.com",
+    "expected_domains": ["web"],
+    "description": "Web scraping / URL fetch"
+  },
+  {
+    "id": "intent-35",
+    "query": "Look up latest news about quantum computing breakthroughs",
+    "expected_domains": ["web"],
+    "description": "News web search"
+  },
+  {
+    "id": "intent-36",
+    "query": "Search online for the official documentation of SQLite WAL mode",
+    "expected_domains": ["web"],
+    "description": "Documentation search"
+  },
+  {
+    "id": "intent-37",
+    "query": "Generate an image of a futuristic cybernetic workstation in neon light",
+    "expected_domains": ["image_generation"],
+    "description": "AI image generation prompt"
+  },
+  {
+    "id": "intent-38",
+    "query": "Create image showing an astronaut meditating in deep space with SDXL",
+    "expected_domains": ["image_generation"],
+    "description": "SDXL image rendering"
+  },
+  {
+    "id": "intent-39",
+    "query": "Paint an illustration of a cozy cabin surrounded by snow covered pine trees",
+    "expected_domains": ["image_generation"],
+    "description": "Illustration painting prompt"
+  },
+  {
+    "id": "intent-40",
+    "query": "Render an image of a vintage analog synthesizer on a walnut desk",
+    "expected_domains": ["image_generation"],
+    "description": "Product render generation"
+  },
+  {
+    "id": "intent-41",
+    "query": "Give me a daily briefing with my morning schedule and unread emails",
+    "expected_domains": ["calendar", "mail", "notes"],
+    "description": "Multi-domain executive briefing"
+  },
+  {
+    "id": "intent-42",
+    "query": "Schedule a meeting with Dave and send him an email invite",
+    "expected_domains": ["calendar", "mail"],
+    "description": "Multi-domain meeting and email notification"
+  },
+  {
+    "id": "intent-43",
+    "query": "Check my inbox for bug reports and open the source file to fix it",
+    "expected_domains": ["mail", "files_and_coding"],
+    "description": "Multi-domain mail triage and code patch"
+  },
+  {
+    "id": "intent-44",
+    "query": "Add a task to review the git diff before the meeting",
+    "expected_domains": ["notes", "files_and_coding", "calendar"],
+    "description": "Multi-domain cross-cutting workflow"
+  },
+  {
+    "id": "intent-45",
+    "query": "Hello there! How are you doing today?",
+    "expected_domains": [],
+    "description": "General conversational greeting (fallback: full catalog)"
+  },
+  {
+    "id": "intent-46",
+    "query": "What is the capital of France and why is it culturally significant?",
+    "expected_domains": [],
+    "description": "General knowledge inquiry without tool necessity"
+  },
+  {
+    "id": "intent-47",
+    "query": "Explain the difference between TCP and UDP protocols in computer networking",
+    "expected_domains": [],
+    "description": "Conceptual CS explanation query"
+  },
+  {
+    "id": "intent-48",
+    "query": "Write a short poem about autumn leaves falling in the wind",
+    "expected_domains": [],
+    "description": "Creative writing query"
+  },
+  {
+    "id": "intent-49",
+    "query": "Can you summarize our conversation so far in three bullet points?",
+    "expected_domains": [],
+    "description": "Meta-context conversation summary"
+  },
+  {
+    "id": "intent-50",
+    "query": "Thank you for the help, that resolved my question completely!",
+    "expected_domains": [],
+    "description": "Polite conversational closing"
+  }
+]

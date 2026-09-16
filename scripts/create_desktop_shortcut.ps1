@@ -8,33 +8,46 @@ if (-not (Test-Path $AssetsDir)) {
 }
 
 $IconPath = Join-Path $AssetsDir "aether.ico"
-$SourceImage = "C:\Users\jrrya\.gemini\antigravity-ide\brain\f6586a8a-0cbd-4e62-b95e-1d93ea2a028c\aether_app_icon_1788631602687.jpg"
+$AssetsLogo = Join-Path $AssetsDir "logo.jpg"
+$WebLogo = Join-Path "$ProjectRoot\src\web\static" "logo.jpg"
+$FallbackImage = "C:\Users\jrrya\.gemini\antigravity\brain\8954aea9-d488-4cc1-a87e-229871c276a4\aether_app_logo_1789434116383.jpg"
 
-# 1. Generate high-resolution .ico from the generated logo if it doesn't exist
-if (Test-Path $SourceImage) {
-    Copy-Item $SourceImage (Join-Path $AssetsDir "logo.jpg") -Force
-    Copy-Item $SourceImage (Join-Path "$ProjectRoot\src\web\static" "logo.jpg") -Force
+# 1. Ensure logo.jpg is synchronized
+if ((-not (Test-Path $AssetsLogo)) -and (Test-Path $FallbackImage)) {
+    Copy-Item $FallbackImage $AssetsLogo -Force
+}
+if ((Test-Path $AssetsLogo) -and (-not (Test-Path $WebLogo))) {
+    Copy-Item $AssetsLogo $WebLogo -Force
+}
 
-    try {
-        Add-Type -AssemblyName System.Drawing
-        $img = [System.Drawing.Bitmap]::FromFile($SourceImage)
-        $resized = New-Object System.Drawing.Bitmap 256, 256
-        $g = [System.Drawing.Graphics]::FromImage($resized)
-        $g.InterpolationMode = [System.Drawing.Drawing2D.InterpolationMode]::HighQualityBicubic
-        $g.DrawImage($img, 0, 0, 256, 256)
-        $g.Dispose()
+# 2. Generate multi-resolution .ico if missing
+if ((-not (Test-Path $IconPath)) -and (Test-Path $AssetsLogo)) {
+    $VenvPy = Join-Path $ProjectRoot ".venv\Scripts\python.exe"
+    if (Test-Path $VenvPy) {
+        & $VenvPy -c "from PIL import Image; img = Image.open(r'$AssetsLogo').convert('RGBA'); img.save(r'$IconPath', format='ICO', sizes=[(256, 256), (128, 128), (64, 64), (48, 48), (32, 32), (16, 16)])"
+        Write-Host "[OK] Generated multi-resolution ICO via Pillow: $IconPath" -ForegroundColor Green
+    } else {
+        try {
+            Add-Type -AssemblyName System.Drawing
+            $img = [System.Drawing.Bitmap]::FromFile($AssetsLogo)
+            $resized = New-Object System.Drawing.Bitmap 256, 256
+            $g = [System.Drawing.Graphics]::FromImage($resized)
+            $g.InterpolationMode = [System.Drawing.Drawing2D.InterpolationMode]::HighQualityBicubic
+            $g.DrawImage($img, 0, 0, 256, 256)
+            $g.Dispose()
 
-        $hIcon = $resized.GetHicon()
-        $icon = [System.Drawing.Icon]::FromHandle($hIcon)
-        $fs = New-Object System.IO.FileStream $IconPath, ([System.IO.FileMode]::Create)
-        $icon.Save($fs)
-        $fs.Close()
-        $icon.Dispose()
-        $resized.Dispose()
-        $img.Dispose()
-        Write-Host "[OK] Created icon at: $IconPath" -ForegroundColor Green
-    } catch {
-        Write-Warning "Could not convert image to ICO: $_"
+            $hIcon = $resized.GetHicon()
+            $icon = [System.Drawing.Icon]::FromHandle($hIcon)
+            $fs = New-Object System.IO.FileStream $IconPath, ([System.IO.FileMode]::Create)
+            $icon.Save($fs)
+            $fs.Close()
+            $icon.Dispose()
+            $resized.Dispose()
+            $img.Dispose()
+            Write-Host "[OK] Created icon at: $IconPath" -ForegroundColor Green
+        } catch {
+            Write-Warning "Could not convert image to ICO: $_"
+        }
     }
 }
 
