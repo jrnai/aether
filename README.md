@@ -49,45 +49,45 @@ Aether operates **100% locally on consumer GPUs** (optimized for 8 GB VRAM like 
 
 ```mermaid
 flowchart TD
-    User([User: Voice / Web UI / Hotkeys]) -->|Audio / Text / Hotkey| Orchestrator[Aether Core Orchestrator]
+    User(["User: Voice / Web UI / Hotkeys"]) -->|Audio / Text / Hotkey| Orchestrator["Aether Core Orchestrator"]
 
-    subgraph Desktop [Native Desktop & Perception Layer]
-        Overlay[Floating Desktop Overlay\nWin32 WDA_EXCLUDEFROMCAPTURE]
-        ScreenCap[Windows GDI Screen Capture\nZ-Order Window Hierarchy]
-        VoiceIn[OpenWakeWord + Whisper STT]
-        TTS[Neural Edge-TTS Output]
+    subgraph Desktop ["Native Desktop & Perception Layer"]
+        Overlay["Floating Desktop Overlay<br/>Win32 WDA_EXCLUDEFROMCAPTURE"]
+        ScreenCap["Windows GDI Screen Capture<br/>Z-Order Window Hierarchy"]
+        VoiceIn["OpenWakeWord + Whisper STT"]
+        TTS["Neural Edge-TTS Output"]
     end
 
-    subgraph Orchestration [Aether Orchestration Core (Python)]
-        Router{Intent-Aware Domain Router\nDynamic Tool Masking}
-        Loop[ReAct Tool-Calling Engine]
-        Guard[Safety Guard & AST Sandbox\nHITL Interceptor]
-        Tracing[Structured Tracing & Telemetry]
-        Context[Context & Token Budgeter]
+    subgraph Orchestration ["Aether Orchestration Core (Python)"]
+        Router{"Intent-Aware Domain Router<br/>Dynamic Tool Masking"}
+        Loop["ReAct Tool-Calling Engine"]
+        Guard["Safety Guard & AST Sandbox<br/>HITL Interceptor"]
+        Tracing["Structured Tracing & Telemetry"]
+        Context["Context & Token Budgeter"]
 
         Router --> Context --> Loop
         Loop -->|Mutating Action?| Guard
         Guard -->|Approved| Loop
     end
 
-    subgraph LLMRuntimes [Local Inference (Ollama / vLLM)]
-        M_Gen[General: Qwen 2.5 7B Instruct]
-        M_Code[Coder: Qwen 2.5 Coder 7B]
-        M_Think[Reasoning: DeepSeek-R1 7B]
-        M_Vision[Multimodal: Qwen 2.5-VL 7B]
+    subgraph LLMRuntimes ["Local Inference (Ollama / vLLM)"]
+        M_Gen["General: Qwen 2.5 7B Instruct"]
+        M_Code["Coder: Qwen 2.5 Coder 7B"]
+        M_Think["Reasoning: DeepSeek-R1 7B"]
+        M_Vision["Multimodal: Qwen 2.5-VL 7B"]
     end
 
-    subgraph MCPServers [FastMCP Stdio Tool Servers]
-        S_Screen[Screen Server\nCapture & Active Window]
-        S_Cal[Calendar Server\nGoogle API & CalDAV]
-        S_Mail[Mail Server\nIMAP & Draft Stager]
-        S_Notes[Notes Server\nMarkdown Vault & Tasks]
-        S_Weather[Weather Server\nOpen-Meteo & Geocoding]
-        S_Files[Files & Terminal Server\nWorkspace Patch & Sandbox]
+    subgraph MCPServers ["FastMCP Stdio Tool Servers"]
+        S_Screen["Screen Server<br/>Capture & Active Window"]
+        S_Cal["Calendar Server<br/>Google API & CalDAV"]
+        S_Mail["Mail Server<br/>IMAP & Draft Stager"]
+        S_Notes["Notes Server<br/>Markdown Vault & Tasks"]
+        S_Weather["Weather Server<br/>Open-Meteo & Geocoding"]
+        S_Files["Files & Terminal Server<br/>Workspace Patch & Sandbox"]
     end
 
-    subgraph Diffusion [Photorealistic Image Engine]
-        Comfy[ComfyUI Daemon\nJuggernaut XL v9 SDXL\nAuto-Wake / Auto-Sleep]
+    subgraph Diffusion ["Photorealistic Image Engine"]
+        Comfy["ComfyUI Daemon<br/>Juggernaut XL v9 SDXL<br/>Auto-Wake / Auto-Sleep"]
     end
 
     User <--> Desktop
