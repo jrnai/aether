@@ -422,7 +422,7 @@ export function renderMarkdown(md) {
       // Check for Markdown Table
       if (trimmed.includes('|') && i + 1 < rawLines.length) {
         const nextTrimmed = rawLines[i + 1].trim();
-        if (/^[\s\|:\-]+$/.test(nextTrimmed) && /-/{2,}/.test(nextTrimmed)) {
+        if (/^[\s\|:\-]+$/.test(nextTrimmed) && /-{2,}/.test(nextTrimmed)) {
           if (inSubUl) { outLines.push('</ul></li>'); inSubUl = false; }
           if (inOl) { outLines.push('</li></ol>'); inOl = false; }
           if (inTopUl) { outLines.push('</ul>'); inTopUl = false; }
