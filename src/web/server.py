@@ -309,10 +309,10 @@ async def api_overview(request: Request) -> JSONResponse:
     cfg = get_config()
     active_model = get_active_model()
     ollama_client = OllamaClient(base_url=cfg.llm.base_url, default_model=active_model)
-    ollama_ok = await asyncio.to_thread(ollama_client.is_connected)
 
-    # Probe live internet connectivity and calendar status asynchronously
-    internet_ok, cal_status = await asyncio.gather(
+    # Probe Ollama, live internet connectivity, and calendar status concurrently
+    ollama_ok, internet_ok, cal_status = await asyncio.gather(
+        asyncio.to_thread(ollama_client.is_connected),
         asyncio.to_thread(check_internet_connection, 1.0),
         asyncio.to_thread(get_cached_calendar_status),
     )
@@ -3580,14 +3580,6 @@ def run_web_server(
     server = uvicorn.Server(config)
     _global_server = server
 
-    def _monitor_app_window(proc: subprocess.Popen, srv: uvicorn.Server) -> None:
-        try:
-            proc.wait()
-        except Exception:
-            pass
-        logger.info("Aether desktop app window closed. Shutting down server...")
-        srv.should_exit = True
-
     if open_browser:
         def _launch_desktop_window() -> None:
             import time
@@ -3597,13 +3589,6 @@ def run_web_server(
                 time.sleep(0.05)
             try:
                 open_desktop_app_window(url, app_mode=app_mode)
-                if _APP_WINDOW_PROC is not None:
-                    threading.Thread(
-                        target=_monitor_app_window,
-                        args=(_APP_WINDOW_PROC, server),
-                        daemon=True,
-                        name="aether-window-monitor",
-                    ).start()
             except Exception as ex:
                 logger.debug("Could not launch app window: %s", ex)
 

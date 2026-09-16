@@ -198,6 +198,33 @@ def list_events(
             if now_ts - cached_ts < _EVENTS_CACHE_TTL:
                 return [dict(e) for e in cached_list]
 
+        # On cold start, serve local disk cache instantly (<1ms) and sync in background
+        if not force_refresh and cache_key not in _EVENTS_CACHE:
+            cached_disk = load_events()
+            if cached_disk:
+                matching_disk = []
+                for evt in cached_disk:
+                    try:
+                        evt_start = _parse_iso(evt.get("start") or evt.get("start_time", ""))
+                        evt_end = _parse_iso(evt.get("end") or evt.get("end_time", ""))
+                        if evt_start < end_dt and evt_end > start_dt:
+                            matching_disk.append(_enrich_event(evt))
+                    except Exception:
+                        continue
+                if matching_disk:
+                    results = sorted(matching_disk, key=lambda x: x["start"])
+                    _EVENTS_CACHE[cache_key] = (now_ts, results)
+                    import threading
+                    def _bg_sync():
+                        try:
+                            bg_live = gcal_manager.fetch_events(start_dt, end_dt)
+                            if bg_live:
+                                _EVENTS_CACHE[cache_key] = (_time.time(), [_enrich_event(e) for e in sorted(bg_live, key=lambda x: x["start"])])
+                        except Exception:
+                            pass
+                    threading.Thread(target=_bg_sync, daemon=True, name="gcal-bg-sync").start()
+                    return results
+
         live_events = gcal_manager.fetch_events(start_dt, end_dt)
         if live_events:
             results = [_enrich_event(e) for e in sorted(live_events, key=lambda x: x["start"])]

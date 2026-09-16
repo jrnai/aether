@@ -251,11 +251,14 @@ export async function refreshAllData(forceFresh = false) {
   let refreshError = null;
 
   try {
-    // 1. Immediately fetch active Overview tab & cached weather (< 50ms)
-    await Promise.all([
+    // 1. Concurrently fetch all Overview tab dependencies so all cards hydrate simultaneously
+    await Promise.allSettled([
       fetchOverview(),
       fetchWeather(forceFresh),
       fetchTasks(),
+      fetchCalendar(),
+      fetchAiDigest(),
+      fetchEmails(),
     ]);
 
     if (refreshBtn) {
@@ -274,11 +277,8 @@ export async function refreshAllData(forceFresh = false) {
       showToast('All dashboard data & workspace synchronized!', 'success');
     }
 
-    // 2. Fetch secondary tabs in the background without blocking the UI
-    const backgroundPromises = [
-      fetchCalendar(),
-      fetchEmails(),
-    ];
+    // 2. Fetch remaining background feeds (news stories, models, workspace tree)
+    const backgroundPromises = [];
 
     if (typeof fetchModels === 'function') {
       backgroundPromises.push(fetchModels());
@@ -288,11 +288,11 @@ export async function refreshAllData(forceFresh = false) {
       backgroundPromises.push(loadFilesTree());
     }
 
-    // Fire-and-forget background update for news feed & AI student digest
     fetchNews();
-    fetchAiDigest();
 
-    await Promise.all(backgroundPromises);
+    if (backgroundPromises.length > 0) {
+      await Promise.allSettled(backgroundPromises);
+    }
   } catch (err) {
     console.error('Error refreshing data:', err);
     refreshError = err;
