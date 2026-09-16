@@ -327,5 +327,16 @@ def test_voice_engine_pop_window_on_wake_enabled() -> None:
         mock_bring.assert_called_once()
 
 
+def test_desktop_overlay_lifecycle() -> None:
+    """Verify DesktopOverlay methods queue commands properly."""
+    from src.voice.overlay import get_overlay
+    ov = get_overlay()
+    assert ov is not None
 
-
+    ov.show("RECORDING")
+    ov.set_transcript("hello world")
+    ov.set_answer("test answer")
+    ov.show_timeout()
+    ov.dismiss(delay_ms=5000)
+    ov.hide()
+    # If no exceptions were raised, command queuing works cleanly

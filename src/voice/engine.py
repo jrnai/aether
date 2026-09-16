@@ -405,10 +405,12 @@ class VoiceEngine:
             if self._oww_model:
                 self._oww_model.reset()
 
-            self._drain_queue()
             play_wake_chime()
+            # Allow the ~250ms chime tone to clear speakers and mic input before recording
+            time.sleep(0.28)
+            self._drain_queue()
             try:
-                get_overlay().show("LISTENING")
+                get_overlay().show("RECORDING")
             except Exception:
                 pass
             self._set_state("RECORDING")
@@ -416,12 +418,13 @@ class VoiceEngine:
             recorded_chunks: list[np.ndarray] = []
             silence_start: float | None = None
             speech_started = False
+            consecutive_speech_chunks = 0
             start_time = time.time()
 
             # Dynamic adaptive thresholds based on ambient noise floor
             base_floor = max(15.0, self.ambient_rms)
-            speech_threshold = max(base_floor * 1.30, base_floor + 35.0)
-            silence_threshold = max(base_floor * 1.12, base_floor + 15.0)
+            speech_threshold = max(base_floor * 1.30, base_floor + 32.0)
+            silence_threshold = max(base_floor * 1.10, base_floor + 14.0)
 
             while not self._stop_event.is_set():
                 if self._interrupt_event.is_set():
@@ -444,24 +447,32 @@ class VoiceEngine:
                     rms = float(np.sqrt(np.mean(frame.astype(np.float32) ** 2)))
 
                     if rms >= speech_threshold:
-                        speech_started = True
-                        silence_start = None
-                    elif rms <= silence_threshold:
-                        if speech_started:
-                            if silence_start is None:
-                                silence_start = now
-                            elif now - silence_start >= self.silence_timeout_seconds:
-                                logger.info(
-                                    "Silence detected after speech (total duration: %.2fs). Stopping recording.",
-                                    now - start_time,
-                                )
-                                break
-                    if not speech_started and (now - start_time >= 5.5):
-                        if len(recorded_chunks) >= 12:
+                        consecutive_speech_chunks += 1
+                        if consecutive_speech_chunks >= 2:
+                            speech_started = True
+                            silence_start = None
+                    else:
+                        consecutive_speech_chunks = 0
+                        if rms <= silence_threshold:
+                            if speech_started:
+                                if silence_start is None:
+                                    silence_start = now
+                                elif now - silence_start >= max(1.8, self.silence_timeout_seconds):
+                                    logger.info(
+                                        "Silence detected after speech (total duration: %.2fs). Stopping recording.",
+                                        now - start_time,
+                                    )
+                                    break
+                    if not speech_started and (now - start_time >= 6.0):
+                        if len(recorded_chunks) >= 16:
                             logger.info("Timeout reached with audio chunks captured. Attempting transcription.")
                             break
                         logger.info("No speech detected after trigger. Timing out.")
                         play_cancel_chime()
+                        try:
+                            get_overlay().show_timeout()
+                        except Exception:
+                            pass
                         return
 
                 if now - start_time >= self.max_recording_seconds:
@@ -473,6 +484,10 @@ class VoiceEngine:
 
             if not recorded_chunks or (len(recorded_chunks) < 8 and not speech_started):
                 play_cancel_chime()
+                try:
+                    get_overlay().show_timeout()
+                except Exception:
+                    pass
                 return
 
             if self._interrupt_event.is_set():
@@ -522,10 +537,18 @@ class VoiceEngine:
             else:
                 logger.info("Transcription yielded empty text.")
                 play_cancel_chime()
+                try:
+                    get_overlay().show_timeout()
+                except Exception:
+                    pass
                 self._set_state("LISTENING")
         except Exception as e:
             logger.error("Error in wake event handler: %s", e)
             play_cancel_chime()
+            try:
+                get_overlay().show_timeout()
+            except Exception:
+                pass
             self._set_state("LISTENING")
         finally:
             if self._oww_model:
@@ -535,7 +558,7 @@ class VoiceEngine:
             if self._state not in ("PROCESSING", "SPEAKING"):
                 self._set_state("LISTENING")
                 try:
-                    get_overlay().dismiss(delay_ms=1500)
+                    get_overlay().dismiss(delay_ms=4500)
                 except Exception:
                     pass
             if self._is_handling_wake.locked():

@@ -17,7 +17,7 @@ logger = logging.getLogger("aether.voice.overlay")
 WDA_EXCLUDEFROMCAPTURE = 0x00000011
 
 # Visual constants
-_WIDTH = 320
+_WIDTH = 350
 _PADDING = 20
 _BG = "#18181B"
 _BG_DARK = "#09090B"
@@ -58,7 +58,11 @@ class DesktopOverlay:
         """Display AI response text."""
         self._send("set_answer", text)
 
-    def dismiss(self, delay_ms: int = 4000) -> None:
+    def show_timeout(self) -> None:
+        """Display helpful feedback when no speech was heard."""
+        self._send("timeout", None)
+
+    def dismiss(self, delay_ms: int = 8000) -> None:
         """Schedule auto-hide after delay."""
         self._send("dismiss", delay_ms)
 
@@ -90,11 +94,14 @@ class DesktopOverlay:
         sw = root.winfo_screenwidth()
         root.geometry(f"{_WIDTH}x60+{sw - _WIDTH - _PADDING}+{_PADDING}")
 
+        self._is_hovered = False
+        self._current_state = "IDLE"
+
         # ── widgets ──
         self._frame = tk.Frame(root, bg=_BG, padx=12, pady=8)
         self._frame.pack(fill="both", expand=True)
 
-        # Header row: dot + label
+        # Header row: dot + label + actions
         header = tk.Frame(self._frame, bg=_BG)
         header.pack(fill="x", anchor="w")
 
@@ -106,7 +113,27 @@ class DesktopOverlay:
             header, text="Listening…", fg=_PRIMARY, bg=_BG,
             font=(_FONT_FAMILY, 10, "bold"), anchor="w",
         )
-        self._state_label.pack(side="left", fill="x")
+        self._state_label.pack(side="left", fill="x", expand=True)
+
+        # Header action buttons (Open App & Close)
+        btn_box = tk.Frame(header, bg=_BG)
+        btn_box.pack(side="right")
+
+        self._open_btn = tk.Label(
+            btn_box, text="Open App ↗", fg=_PRIMARY, bg=_BG,
+            font=(_FONT_FAMILY, 8, "bold"), cursor="hand2", padx=4,
+        )
+        self._open_btn.pack(side="left", padx=(0, 6))
+        self._open_btn.bind("<Button-1>", lambda _e: self._on_open_app())
+
+        self._close_btn = tk.Label(
+            btn_box, text="✕", fg=_TEXT_DIM, bg=_BG,
+            font=(_FONT_FAMILY, 9), cursor="hand2", padx=4,
+        )
+        self._close_btn.pack(side="right")
+        self._close_btn.bind("<Button-1>", lambda _e: self._do_hide())
+        self._close_btn.bind("<Enter>", lambda _e: self._close_btn.config(fg=_TEXT_MAIN))
+        self._close_btn.bind("<Leave>", lambda _e: self._close_btn.config(fg=_TEXT_DIM))
 
         # Transcript line
         self._transcript_label = tk.Label(
@@ -119,11 +146,29 @@ class DesktopOverlay:
             self._frame, text="", fg=_TEXT_MAIN, bg=_BG,
             font=(_FONT_FAMILY, 9), anchor="w", justify="left", wraplength=_WIDTH - 40,
         )
+        # Clicking answer opens app
+        self._answer_label.bind("<Button-1>", lambda _e: self._on_open_app())
 
         # Pulse animation state
         self._pulse_on = True
         self._pulse_job: str | None = None
         self._dismiss_job: str | None = None
+
+        # Hover-to-keep-open bindings
+        def _on_enter(_e):
+            self._is_hovered = True
+            if self._dismiss_job and self._root:
+                self._root.after_cancel(self._dismiss_job)
+                self._dismiss_job = None
+
+        def _on_leave(_e):
+            self._is_hovered = False
+            if self._current_state in ("SPEAKING", "IDLE", "TIMEOUT"):
+                self._do_dismiss(6000)
+
+        for w in (root, self._frame, header, self._state_label, self._transcript_label, self._answer_label):
+            w.bind("<Enter>", _on_enter)
+            w.bind("<Leave>", _on_leave)
 
         # Apply WDA_EXCLUDEFROMCAPTURE so screen capture doesn't see the overlay
         root.update_idletasks()
@@ -132,10 +177,26 @@ class DesktopOverlay:
         # Bind command processing
         root.bind("<<Cmd>>", lambda _e: self._process_commands())
 
+        # Queue polling loop for robust event delivery even when withdrawn
+        def _poll_queue():
+            self._process_commands()
+            if self._root:
+                self._root.after(80, _poll_queue)
+
+        _poll_queue()
+
         # Start hidden
         root.withdraw()
         self._ready.set()
         root.mainloop()
+
+    def _on_open_app(self) -> None:
+        """Bring the main Aether window to the foreground."""
+        try:
+            from src.voice.audio_io import bring_app_window_to_foreground
+            bring_app_window_to_foreground()
+        except Exception as e:
+            logger.debug("Failed to bring app window to front: %s", e)
 
     def _apply_capture_exclusion(self, root: tk.Tk) -> None:
         """Make the overlay invisible to screen capture (Windows 10 2004+)."""
@@ -171,6 +232,8 @@ class DesktopOverlay:
                 self._do_set_transcript(arg)
             elif cmd == "set_answer":
                 self._do_set_answer(arg)
+            elif cmd == "timeout":
+                self._do_timeout()
             elif cmd == "dismiss":
                 self._do_dismiss(arg)
             elif cmd == "hide":
@@ -184,10 +247,11 @@ class DesktopOverlay:
         if self._dismiss_job:
             root.after_cancel(self._dismiss_job)
             self._dismiss_job = None
+        self._is_hovered = False
         # Reset text
         self._transcript_label.config(text="")
         self._transcript_label.pack_forget()
-        self._answer_label.config(text="")
+        self._answer_label.config(text="", fg=_TEXT_MAIN)
         self._answer_label.pack_forget()
         # Resize to compact
         sw = root.winfo_screenwidth()
@@ -198,15 +262,17 @@ class DesktopOverlay:
         self._start_pulse()
 
     def _do_set_state(self, state: str) -> None:
+        self._current_state = state
         labels = {
             "LISTENING": "Listening…",
-            "RECORDING": "Listening…",
+            "RECORDING": "Listening to you…",
             "TRANSCRIBING": "Processing…",
             "PROCESSING": "Thinking…",
-            "SPEAKING": "Speaking…",
+            "SPEAKING": "Aether Answer",
             "IDLE": "Ready",
+            "TIMEOUT": "Didn't catch that",
         }
-        self._state_label.config(text=labels.get(state, state))
+        self._state_label.config(text=labels.get(state, state), fg=_PRIMARY if state != "TIMEOUT" else _TEXT_MUTED)
         if state in ("LISTENING", "RECORDING"):
             self._start_pulse()
         else:
@@ -223,10 +289,23 @@ class DesktopOverlay:
     def _do_set_answer(self, text: str) -> None:
         if not text:
             return
-        display = text if len(text) <= 300 else text[:297] + "…"
-        self._answer_label.config(text=display)
+        display = text if len(text) <= 320 else text[:317] + "…"
+        self._answer_label.config(text=display, fg=_TEXT_MAIN)
         self._answer_label.pack(fill="x", anchor="w", pady=(4, 0))
         self._resize_to_fit()
+
+    def _do_timeout(self) -> None:
+        self._stop_pulse()
+        self._current_state = "TIMEOUT"
+        self._state_label.config(text="Didn't catch that", fg=_TEXT_MUTED)
+        self._answer_label.config(
+            text="Tap or say 'Aether' to try again, or click 'Open App ↗'.",
+            fg=_TEXT_MUTED,
+        )
+        self._answer_label.pack(fill="x", anchor="w", pady=(4, 0))
+        self._resize_to_fit()
+        if not self._is_hovered:
+            self._do_dismiss(5000)
 
     def _do_dismiss(self, delay_ms: int) -> None:
         root = self._root
@@ -234,6 +313,10 @@ class DesktopOverlay:
             return
         if self._dismiss_job:
             root.after_cancel(self._dismiss_job)
+            self._dismiss_job = None
+        # If user is hovering mouse over overlay, do not auto-dismiss!
+        if self._is_hovered:
+            return
         self._dismiss_job = root.after(delay_ms, self._do_hide)
 
     def _do_hide(self) -> None:

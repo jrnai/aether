@@ -93,6 +93,7 @@ class VoiceService:
             "threshold": self.threshold,
             "stt_model": self.stt_model,
             "tts_enabled": self.tts_enabled,
+            "pop_window_on_wake": getattr(self.engine, "pop_window_on_wake", False),
             "turn_id": self._turn_id,
             "last_transcript": self._last_transcript,
             "last_answer": self._last_answer,
@@ -275,7 +276,7 @@ class VoiceService:
             self.engine._drain_queue()
             self.engine._set_state("LISTENING")
             try:
-                get_overlay().dismiss(delay_ms=4000)
+                get_overlay().dismiss(delay_ms=12000)
             except Exception:
                 pass
 
