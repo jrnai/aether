@@ -441,6 +441,23 @@ body {
   margin-bottom: 0.35rem;
 }
 
+button.status-indicator {
+  background: transparent;
+  border: none;
+  padding: 0;
+  margin: 0 0 0.35rem 0;
+  width: 100%;
+  text-align: left;
+  font: inherit;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: var(--transition);
+}
+
+button.status-indicator:hover {
+  color: var(--text-main);
+}
+
 .dot {
   width: 8px;
   height: 8px;
@@ -2723,9 +2740,22 @@ body {
 }
 
 .explorer-title-box {
-  display: flex;
+  display: inline-flex;
   align-items: center;
   gap: 0.5rem;
+  background: transparent;
+  border: none;
+  padding: 0.15rem 0.35rem;
+  margin: -0.15rem -0.35rem;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  font: inherit;
+  color: inherit;
+  transition: var(--transition);
+}
+
+.explorer-title-box:hover {
+  background: rgba(255, 255, 255, 0.05);
 }
 
 .explorer-title {
@@ -2748,9 +2778,20 @@ body {
 .explorer-action-buttons {
   display: flex;
   align-items: center;
-  flex-wrap: wrap;
-  gap: 0.35rem;
+  gap: 0.25rem;
   margin-bottom: 0.65rem;
+}
+
+.explorer-action-buttons .icon-btn {
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: 0 0.25rem;
+  font-size: 0.72rem;
+}
+
+.explorer-action-buttons #btn-refresh-files {
+  flex: 0 0 26px;
+  padding: 0;
 }
 
 .icon-btn {
