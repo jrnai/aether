@@ -111,9 +111,11 @@ DOMAIN_KEYWORDS: dict[str, list[str]] = {
     "notes": [
         "todo", "todos", "task", "tasks", "note", "notes", "daily note", "daily review",
         "checklist", "mark as completed", "completed task", "add task", "add todo",
+        "create task", "create todo", "new task", "new todo",
         "shopping", "shopping list", "buy", "groceries", "grocery", "errand", "errands",
-        "purchase", "need to buy", "remember to buy", "pick up", "get", "store",
-        "chore", "chores", "take out the trash", "trash day",
+        "purchase", "need to buy", "remember to buy", "remember to", "remind me to", "remind me",
+        "pick up", "get", "store",
+        "chore", "chores", "take out the trash", "trash day", "trash", "garbage",
         "briefing", "morning briefing", "morning brief", "brief me", "daily briefing",
     ],
     "web": [
@@ -588,11 +590,86 @@ class AgentLoop:
         cleaned = re.sub(r"<think>[\s\S]*?</think>", "", text, flags=re.IGNORECASE).strip()
         # Strip <tool_call>...</tool_call>
         cleaned = re.sub(r"<tool_call>[\s\S]*?</tool_call>", "", cleaned, flags=re.IGNORECASE).strip()
-        cleaned = re.sub(r"</?tool_call>", "", cleaned, flags=re.IGNORECASE).strip()
-        cleaned = re.sub(r"</?think>", "", cleaned, flags=re.IGNORECASE).strip()
         if not cleaned and ("tool_call" in text.lower() or "arguments" in text.lower()):
             return "I have processed and executed that action for you."
         return cleaned or text
+
+    def _detect_task_creation_hallucination(self, user_input: str, content: str) -> dict[str, Any] | None:
+        """Detect when model claimed in conversational text to add/create a task without invoking notes_add_todo."""
+        if not content or "notes_add_todo" not in self.tool_dispatch:
+            return None
+        content_lower = content.lower()
+
+        # Check if assistant claimed in text to have added/created/scheduled a task or reminder
+        claim_patterns = [
+            r"\bi(?:'ve|\s+have|\s+will|\s+already|\s+just)?\s+(?:added|created|scheduled|placed|put)\b",
+            r"\badded\s+(?:the\s+task|to\s+your\s+(?:tasks?|todos?|inbox|shopping|notes?))\b",
+            r"\badded\s+a\s+(?:task|reminder|todo|note)\b",
+            r"\bi'll\s+add\s+a\s+task\b",
+        ]
+        has_claim = any(re.search(p, content_lower) for p in claim_patterns)
+        if not has_claim:
+            return None
+
+        # Check if user query relates to tasks, todos, shopping, errands, or chores
+        q_lower = user_input.lower().strip()
+        task_intent_keywords = (
+            "task", "todo", "chore", "errand", "shopping", "buy", "groceries",
+            "trash", "reminder", "remind", "remember to", "need to", "pick up",
+            "take out", "clean", "wash", "fix", "call",
+        )
+        if not any(k in q_lower for k in task_intent_keywords) and "notes" not in detect_intent_domains(user_input):
+            return None
+
+        # Extract task text from assistant content first (quotes, markdown, task headers)
+        task_text = None
+        content_extract_patterns = [
+            r'(?i)(?:added|created)\s+(?:the\s+task\s+|a\s+reminder\s+to\s+)?["\']([^"\']+)["\']',
+            r'(?i)Task:\s*([^\n\r]+)',
+            r'(?i)-\s*\[\s*\]\s*([^\n\r\(]+)',
+            r'(?i)-\s*\*\*Task:\*\*\s*([^\n\r]+)',
+            r'(?i)reminder\s+to\s+([^\n\r\.]+)',
+        ]
+        for p in content_extract_patterns:
+            m = re.search(p, content)
+            if m:
+                candidate = m.group(1).strip().strip("`*\"' ")
+                if candidate and len(candidate) > 1 and "here" not in candidate.lower():
+                    task_text = candidate
+                    break
+
+        # If content extraction failed or was generic, extract from user_input
+        if not task_text or len(task_text) < 2:
+            user_extract_patterns = [
+                r'(?i)add\s+(?:a\s+)?task\s+(?:to\s+)?(.+)',
+                r'(?i)add\s+(?:a\s+)?todo\s+(?:to\s+)?(.+)',
+                r'(?i)add\s+(.+)\s+to\s+(?:my\s+)?(?:todo|task|inbox|shopping)',
+                r'(?i)remember\s+to\s+(.+)',
+                r'(?i)remind\s+me\s+to\s+(.+)',
+                r'(?i)need\s+to\s+buy\s+(.+)',
+                r'(?i)need\s+to\s+(.+)',
+            ]
+            for p in user_extract_patterns:
+                m = re.search(p, q_lower)
+                if m:
+                    task_text = m.group(1).strip().capitalize()
+                    break
+
+        if not task_text:
+            task_text = user_input.strip()
+
+        project = "Shopping" if any(k in q_lower for k in ("buy", "groceries", "grocery", "shopping", "store", "market")) else "Inbox"
+        priority = "normal"
+        if any(k in q_lower or k in content_lower for k in ("urgent", "asap", "emergency", "critical", "immediately", "today")):
+            priority = "urgent"
+        elif any(k in q_lower or k in content_lower for k in ("important", "high priority", "vital", "key")):
+            priority = "important"
+
+        return {
+            "text": task_text,
+            "project": project,
+            "priority": priority,
+        }
 
     def run_turn(
         self,
@@ -626,6 +703,7 @@ class AgentLoop:
         self.messages.append(user_msg)
         invoked_web_sources: list[dict[str, str]] = []
         invoked_tool_domains: set[str] = set()
+        turn_invoked_tools: set[str] = set()
         consecutive_tool_errors: int = 0
         last_failed_tool: str = ""
 
@@ -725,6 +803,19 @@ class AgentLoop:
                 if tool_calls:
                     response_msg["tool_calls"] = tool_calls
                     response_msg["content"] = None
+                elif "notes_add_todo" not in turn_invoked_tools:
+                    hallucinated_task = self._detect_task_creation_hallucination(user_input, content_raw)
+                    if hallucinated_task:
+                        logger.warning(
+                            "Intercepted conversational task creation hallucination; synthesizing notes_add_todo call: %s",
+                            hallucinated_task,
+                        )
+                        tool_calls.append({
+                            "id": f"call_{steps}_notes_add_todo",
+                            "function": {"name": "notes_add_todo", "arguments": hallucinated_task},
+                        })
+                        response_msg["tool_calls"] = tool_calls
+                        response_msg["content"] = None
 
             # If no tool calls requested, model has returned its final textual answer
             if not tool_calls:
@@ -772,6 +863,7 @@ class AgentLoop:
                 dom = get_tool_domain(fn_name)
                 if dom:
                     invoked_tool_domains.add(dom)
+                turn_invoked_tools.add(fn_name)
                 raw_args = (
                     fn_info.get("arguments")
                     or fn_info.get("parameters")
@@ -935,6 +1027,7 @@ class AgentLoop:
         self.messages.append(user_msg)
         invoked_web_sources: list[dict[str, str]] = []
         invoked_tool_domains: set[str] = set()
+        turn_invoked_tools: set[str] = set()
         consecutive_tool_errors: int = 0
         last_failed_tool: str = ""
 
@@ -1031,6 +1124,18 @@ class AgentLoop:
                     })
                 if tool_calls:
                     yield {"type": "clear_tokens"}
+                elif "notes_add_todo" not in turn_invoked_tools:
+                    hallucinated_task = self._detect_task_creation_hallucination(user_input, content_raw)
+                    if hallucinated_task:
+                        logger.warning(
+                            "Intercepted streaming conversational task creation hallucination; clearing tokens and synthesizing notes_add_todo: %s",
+                            hallucinated_task,
+                        )
+                        yield {"type": "clear_tokens"}
+                        tool_calls.append({
+                            "id": f"call_{steps}_notes_add_todo",
+                            "function": {"name": "notes_add_todo", "arguments": hallucinated_task},
+                        })
 
             if not tool_calls:
                 final_content = "".join(streamed_tokens).strip()
@@ -1069,6 +1174,7 @@ class AgentLoop:
                 dom = get_tool_domain(fn_name)
                 if dom:
                     invoked_tool_domains.add(dom)
+                turn_invoked_tools.add(fn_name)
 
                 raw_args = (
                     fn_info.get("arguments")

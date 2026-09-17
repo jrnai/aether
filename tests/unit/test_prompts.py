@@ -44,3 +44,11 @@ def test_generate_system_prompt_contains_screen_vision_rule() -> None:
     assert "capture_screen" in prompt
     assert "get_active_window" in prompt
 
+
+def test_generate_system_prompt_contains_task_anti_hallucination_rule() -> None:
+    prompt = generate_system_prompt()
+    assert "CRITICAL MANDATORY ANTI-HALLUCINATION RULE" in prompt
+    assert "notes_add_todo" in prompt
+    assert "NEVER hallucinate fake URLs or links" in prompt
+
+

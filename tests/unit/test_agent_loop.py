@@ -23,6 +23,21 @@ class MockOllamaClient:
             return {"role": "assistant", "content": "Default mock response"}
         return self.responses.pop(0)
 
+    def chat_stream(
+        self,
+        messages: list[dict[str, Any]],
+        tools: list[dict[str, Any]] | None = None,
+        model: str | None = None,
+        temperature: float = 0.1,
+    ):
+        resp = self.chat(messages, tools, model, temperature)
+        content = resp.get("content") or ""
+        if content:
+            yield {"type": "token", "delta": content}
+        if resp.get("tool_calls"):
+            yield {"type": "tool_calls", "tool_calls": resp["tool_calls"]}
+        yield {"type": "done", "message": resp}
+
 
 def test_agent_loop_text_response_only() -> None:
     mock_client = MockOllamaClient([
@@ -411,6 +426,120 @@ def test_agent_loop_capture_screen_vision_transition_and_reset() -> None:
     res2 = loop.run_turn("what day is it tomorrow?")
     assert res2 == "Tomorrow is Friday."
     assert loop.model == "qwen2.5:7b-instruct"
+
+
+def test_detect_task_creation_hallucination() -> None:
+    mock_client = MockOllamaClient([])
+    loop = AgentLoop(client=mock_client)
+    loop.register_tool(
+        name="notes_add_todo",
+        description="Add a todo item",
+        parameters={"type": "object", "properties": {"text": {"type": "string"}}},
+        func=lambda **kw: {"status": "success"},
+        safe=True,
+    )
+
+    hallucinated_text = (
+        'I\'ve added the task "Take out the trash" to your "Inbox" project with a priority level of "normal". '
+        'Here\'s the task summary:\nTask: Take out the trash\nProject: Inbox\nPriority: normal\n'
+        'You can view or update this task in your notes [here[link]](https://example.com/notes).'
+    )
+    detected = loop._detect_task_creation_hallucination("add task to take out the trash", hallucinated_text)
+    assert detected is not None
+    assert detected["text"] == "Take out the trash"
+    assert detected["project"] == "Inbox"
+    assert detected["priority"] == "normal"
+
+    # Grocery query should target Shopping project
+    detected_grocery = loop._detect_task_creation_hallucination(
+        "buy groceries tomorrow",
+        "Sure, I'll add a task to your shopping list for tomorrow. Here's the task added:\n\n```markdown\n- [ ] Buy groceries\n```"
+    )
+    assert detected_grocery is not None
+    assert detected_grocery["text"] == "Buy groceries"
+    assert detected_grocery["project"] == "Shopping"
+
+    # Non-hallucination queries should return None
+    assert loop._detect_task_creation_hallucination("how do I add a task?", "To add a task, say 'add task ...'") is None
+    assert loop._detect_task_creation_hallucination("what is the weather?", "It is sunny.") is None
+
+
+def test_agent_loop_intercepts_task_creation_hallucination_and_executes_tool() -> None:
+    added_todos = []
+
+    def mock_add_todo(text: str, project: str = "Inbox", priority: str = "normal") -> dict[str, Any]:
+        added_todos.append({"text": text, "project": project, "priority": priority})
+        return {"status": "success", "task": text, "project": project, "priority": priority}
+
+    # Turn 1 response: Model hallucinated text without tool calls
+    # Turn 2 response: Model acknowledges observation after tool execution
+    mock_client = MockOllamaClient([
+        {
+            "role": "assistant",
+            "content": (
+                'I\'ve added the task "Take out the trash" to your "Inbox" project with a priority level of "normal".\n'
+                'You can view or update this task in your notes [here[link]](https://example.com/notes).'
+            ),
+        },
+        {
+            "role": "assistant",
+            "content": "I have verified that 'Take out the trash' is now added to your Inbox tasks.",
+        },
+    ])
+
+    loop = AgentLoop(client=mock_client)
+    loop.register_tool(
+        name="notes_add_todo",
+        description="Add a todo item",
+        parameters={"type": "object", "properties": {"text": {"type": "string"}}},
+        func=mock_add_todo,
+        safe=True,
+    )
+
+    res = loop.run_turn("add task to take out the trash")
+    assert res == "I have verified that 'Take out the trash' is now added to your Inbox tasks."
+    assert len(added_todos) == 1
+    assert added_todos[0]["text"] == "Take out the trash"
+    assert added_todos[0]["project"] == "Inbox"
+    assert added_todos[0]["priority"] == "normal"
+
+
+def test_agent_loop_stream_intercepts_task_creation_hallucination() -> None:
+    added_todos = []
+
+    def mock_add_todo(text: str, project: str = "Inbox", priority: str = "normal") -> dict[str, Any]:
+        added_todos.append({"text": text, "project": project, "priority": priority})
+        return {"status": "success", "task": text, "project": project, "priority": priority}
+
+    mock_client = MockOllamaClient([
+        {
+            "role": "assistant",
+            "content": 'I\'ve added the task "Buy milk" to your "Shopping" list.',
+        },
+        {
+            "role": "assistant",
+            "content": "Buy milk has been added to your shopping list.",
+        },
+    ])
+
+    loop = AgentLoop(client=mock_client)
+    loop.register_tool(
+        name="notes_add_todo",
+        description="Add a todo item",
+        parameters={"type": "object", "properties": {"text": {"type": "string"}}},
+        func=mock_add_todo,
+        safe=True,
+    )
+
+    events = list(loop.run_turn_stream("remember to buy milk"))
+    event_types = [e.get("type") for e in events]
+
+    assert "clear_tokens" in event_types
+    assert "tool_start" in event_types
+    assert len(added_todos) == 1
+    assert added_todos[0]["text"] == "Buy milk"
+    assert added_todos[0]["project"] == "Shopping"
+
 
 
 

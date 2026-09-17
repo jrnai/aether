@@ -711,6 +711,7 @@ def get_web_agent_loop(client: OllamaClient | None = None, reset: bool = False) 
         "- NOTES, TASKS & SHOPPING: Proactively invoke notes tools ('notes_add_todo', 'notes_list_todos', 'notes_complete_todo') "
         "when asked about tasks, todos, shopping lists, groceries, errands, or things to buy. "
         "All shopping lists and items to buy ARE tasks managed via 'notes_add_todo' (with project='Shopping' or 'Inbox'). "
+        "CRITICAL: You MUST ALWAYS directly invoke 'notes_add_todo' in a tool call. NEVER generate conversational text claiming or stating you added, created, or scheduled a task without actually calling 'notes_add_todo'. NEVER hallucinate fake URLs or links (such as https://example.com/notes or [here[link]]). "
         "NEVER tell the user you lack a shopping list tool or ask for confirmation before adding items—directly invoke 'notes_add_todo'. "
         "You can add multiple items in a single call by passing a list of strings to 'text'. "
         "TASK PRIORITY INTELLIGENCE: When adding or creating a task via 'notes_add_todo', analyze the user's intent, urgency, and deadlines to deduce the appropriate priority level: "
@@ -1387,7 +1388,13 @@ def get_web_agent_loop(client: OllamaClient | None = None, reset: bool = False) 
         rows = db.get_messages(sid)[-10:]
         for r in rows:
             if r.get("role") in ("user", "assistant") and r.get("content"):
-                loop.messages.append({"role": r["role"], "content": r["content"]})
+                msg_dict: dict[str, Any] = {"role": r["role"], "content": r["content"]}
+                if r.get("tool_calls_json"):
+                    try:
+                        msg_dict["tool_calls"] = json.loads(r["tool_calls_json"])
+                    except Exception:
+                        pass
+                loop.messages.append(msg_dict)
     except Exception as ex:
         logger.debug("Could not restore previous web chat messages from DB: %s", ex)
 
@@ -1458,10 +1465,16 @@ async def api_chat(request: Request) -> JSONResponse:
 
         # Persist conversation turn into SQLite session
         try:
+            recent_tool_calls = []
+            for m in reversed(agent.messages[-6:]):
+                if m.get("role") == "assistant" and m.get("tool_calls"):
+                    recent_tool_calls = m["tool_calls"]
+                    break
+            tc_json = json.dumps(recent_tool_calls) if recent_tool_calls else None
             db = DatabaseManager(db_path=cfg.storage.database_path)
             sid = db.get_or_create_session("web_chat_default", title="Web Dashboard Chat")
             db.add_message(session_id=sid, role="user", content=user_message)
-            db.add_message(session_id=sid, role="assistant", content=response_text)
+            db.add_message(session_id=sid, role="assistant", content=response_text, tool_calls_json=tc_json)
         except Exception as ex:
             logger.debug("Could not record chat message to SQLite: %s", ex)
 
@@ -1573,10 +1586,16 @@ async def api_chat_stream(request: Request) -> StreamingResponse:
 
         if full_text:
             try:
+                recent_tool_calls = []
+                for m in reversed(agent.messages[-6:]):
+                    if m.get("role") == "assistant" and m.get("tool_calls"):
+                        recent_tool_calls = m["tool_calls"]
+                        break
+                tc_json = json.dumps(recent_tool_calls) if recent_tool_calls else None
                 db = DatabaseManager(db_path=cfg.storage.database_path)
                 sid = db.get_or_create_session("web_chat_default", title="Web Dashboard Chat")
                 db.add_message(session_id=sid, role="user", content=user_message)
-                db.add_message(session_id=sid, role="assistant", content=full_text)
+                db.add_message(session_id=sid, role="assistant", content=full_text, tool_calls_json=tc_json)
             except Exception as ex:
                 logger.debug("Could not record chat message to SQLite: %s", ex)
 
