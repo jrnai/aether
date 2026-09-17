@@ -342,6 +342,40 @@ def test_desktop_overlay_lifecycle() -> None:
     # If no exceptions were raised, command queuing works cleanly
 
 
+def test_desktop_overlay_untruncated_and_autoscroll() -> None:
+    """Verify DesktopOverlay preserves long text without truncation and enables speech autoscroll."""
+    import time
+    from src.voice.overlay import get_overlay
+
+    ov = get_overlay()
+    long_response = (
+        "This is an extended response text designed to test that Aether no longer truncates "
+        "spoken responses at 320 characters with ellipsis. It contains multiple sentences describing "
+        "system components and ensuring that text widget display lines overflow the 9-line visible viewport. "
+        "As speech proceeds, the view automatically shifts downward so that the user can comfortably read "
+        "everything Aether is uttering in real time until the conclusion."
+    )
+    ov.show("RECORDING")
+    ov.set_transcript("Can you explain the details?")
+    ov.set_answer(long_response)
+    ov.set_state("SPEAKING")
+
+    time.sleep(0.3)
+    content = ov._answer_text.get("1.0", "end").strip()
+    assert content == long_response
+    assert "…" not in content[-5:]
+    assert ov._scroll_active is True
+
+    # Test mouse hover pause
+    ov._is_hovered = True
+    pos_before = ov._answer_text.yview()[0]
+    time.sleep(0.15)
+    assert abs(ov._answer_text.yview()[0] - pos_before) < 0.01
+
+    ov._is_hovered = False
+    ov.hide()
+
+
 def test_voice_engine_speech_and_silence_detection() -> None:
     """Verify that speech onset is detected and trailing silence terminates recording promptly."""
     import numpy as np
