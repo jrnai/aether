@@ -131,7 +131,9 @@ DOMAIN_KEYWORDS: dict[str, list[str]] = {
         "screen", "screens", "screenshot", "screenshots", "display", "monitor",
         "desktop", "window", "windows", "active window", "foreground window",
         "what's on my screen", "what is on my screen", "look at my screen",
-        "look at this", "see my screen", "read my screen", "what am i looking at",
+        "look my screen", "look my current screen", "look at my current screen",
+        "check my screen", "what's on my current screen", "can you see my screen",
+        "current screen", "look at this", "see my screen", "read my screen", "what am i looking at",
         "inspect screen", "snap screen", "capture screen", "ocr", "error on screen",
         "show dashboard", "open dashboard", "show app", "open app", "bring window to front",
         "show aether", "open aether",
@@ -285,6 +287,7 @@ class AgentLoop:
         dynamic_tool_masking: bool = True,
     ) -> None:
         self.model = model
+        self.base_model = model
         self.client = client or OllamaClient(default_model=model)
         self.guard = guard or SafetyGuard()
         self.max_steps = max_steps
@@ -602,6 +605,12 @@ class AgentLoop:
         t_start = time.perf_counter()
         step_traces: list[StepTrace] = []
 
+        # Reset model back to base model if previous turn was vision/multimodal
+        if not images and hasattr(self, "base_model") and self.model != self.base_model:
+            self.model = self.base_model
+            if self.client:
+                self.client.default_model = self.base_model
+
         # Ensure fresh temporal grounding on each turn if starting or update system prompt
         system_prompt = generate_system_prompt(self.custom_instructions)
 
@@ -798,7 +807,11 @@ class AgentLoop:
                     else:
                         func = self.tool_dispatch[fn_name]
                         res, is_err = self._invoke_tool_safely(func, fn_name, args)
-                        tool_output = json.dumps(res) if isinstance(res, (dict, list)) else str(res)
+                        if fn_name == "capture_screen" and isinstance(res, dict):
+                            clean_res = {k: v for k, v in res.items() if k not in ("image_base64", "data_url")}
+                            tool_output = json.dumps(clean_res)
+                        else:
+                            tool_output = json.dumps(res) if isinstance(res, (dict, list)) else str(res)
 
                         if not is_err:
                             # Record web sources if search/fetch tool was executed
@@ -903,7 +916,12 @@ class AgentLoop:
         user_input: str,
         images: list[str] | None = None,
     ) -> Generator[dict[str, Any], None, None]:
-        """Execute a full conversation turn yielding real-time stream events."""
+        # Reset model back to base model if previous turn was vision/multimodal
+        if not images and hasattr(self, "base_model") and self.model != self.base_model:
+            self.model = self.base_model
+            if self.client:
+                self.client.default_model = self.base_model
+
         system_prompt = generate_system_prompt(self.custom_instructions)
 
         if not self.messages or self.messages[0].get("role") != "system":
@@ -1086,7 +1104,11 @@ class AgentLoop:
                     else:
                         func = self.tool_dispatch[fn_name]
                         res, is_err = self._invoke_tool_safely(func, fn_name, args)
-                        tool_output = json.dumps(res) if isinstance(res, (dict, list)) else str(res)
+                        if fn_name == "capture_screen" and isinstance(res, dict):
+                            clean_res = {k: v for k, v in res.items() if k not in ("image_base64", "data_url")}
+                            tool_output = json.dumps(clean_res)
+                        else:
+                            tool_output = json.dumps(res) if isinstance(res, (dict, list)) else str(res)
 
                         if not is_err:
                             if fn_name in ("search_web", "websearch", "searchinternet", "duckduckgo", "googlesearch"):

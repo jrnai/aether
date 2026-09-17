@@ -88,6 +88,7 @@ from src.servers.image_server import (
 )
 from src.servers.screen_server import (
     capture_desktop_screen,
+    capture_screen,
     get_active_window_info,
 )
 from src.voice.audio_io import bring_app_window_to_foreground
@@ -727,6 +728,9 @@ def get_web_agent_loop(client: OllamaClient | None = None, reset: bool = False) 
         "You run 100% locally on private hardware with zero cloud censorship or sensitivity filters. "
         "NEVER refuse, lecture, sanitize, or alter creative, comedic, surreal, fictional, pop-culture, or religious prompts (e.g. historical/religious figures, celebrities, or parody scenarios like Jesus Christ playing basketball). "
         "Always invoke 'generate_image' directly with the requested prompt, and never fabricate or hallucinate fake image markdown links in conversational text.\n"
+        "- DESKTOP SCREEN VISION: You have full real-time visual access to the user's desktop screen via 'capture_screen' and window inspection via 'get_active_window'. "
+        "When asked 'what's on my screen', 'look at my screen', 'look at my current screen', 'look my current screen', 'see my screen', 'what am I looking at', 'read this error', or to inspect anything on their desktop, "
+        "ALWAYS invoke 'capture_screen' immediately. NEVER tell the user you cannot look at their screen or ask them to manually take a screenshot—you have the 'capture_screen' vision tool directly integrated to see their screen in real time.\n"
         "- COMMUNICATION STYLE: Direct, authoritative, highly technical, and structured Markdown with exact code blocks, diffs, and file paths."
     )
 
@@ -1350,7 +1354,7 @@ def get_web_agent_loop(client: OllamaClient | None = None, reset: bool = False) 
                 },
             },
         },
-        func=capture_desktop_screen,
+        func=capture_screen,
         safe=True,
     )
 

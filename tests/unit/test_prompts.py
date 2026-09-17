@@ -37,3 +37,10 @@ def test_generate_system_prompt_contains_focus_window_buffer_rule() -> None:
     assert "30 minutes before or after" in prompt
     assert "Free Focus Windows" in prompt
 
+
+def test_generate_system_prompt_contains_screen_vision_rule() -> None:
+    prompt = generate_system_prompt()
+    assert "For Desktop Screen Vision & Multimodal Desktop Awareness" in prompt
+    assert "capture_screen" in prompt
+    assert "get_active_window" in prompt
+

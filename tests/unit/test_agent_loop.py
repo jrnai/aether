@@ -371,6 +371,48 @@ def test_agent_loop_resolves_calendarcreateevent_aliases() -> None:
     assert loop._resolve_tool_name("calendar.create_event") == "calendar_create_event"
 
 
+def test_agent_loop_capture_screen_vision_transition_and_reset() -> None:
+    tool_call_response = {
+        "role": "assistant",
+        "content": '{"name": "capture_screen", "arguments": {}}',
+    }
+    vision_response = {
+        "role": "assistant",
+        "content": "I see your desktop with VS Code open.",
+    }
+    normal_response = {
+        "role": "assistant",
+        "content": "Tomorrow is Friday.",
+    }
+    mock_client = MockOllamaClient([tool_call_response, vision_response, normal_response])
+
+    loop = AgentLoop(model="qwen2.5:7b-instruct", client=mock_client)
+    loop.register_tool(
+        name="capture_screen",
+        description="Capture screen",
+        parameters={},
+        func=lambda: {
+            "status": "success",
+            "active_window": "VS Code",
+            "resolution": "1280x800",
+            "message": "Screen captured successfully.",
+            "image_base64": "fake_base64_data",
+        },
+        safe=True,
+    )
+
+    res1 = loop.run_turn("look at my current screen")
+    assert res1 == "I see your desktop with VS Code open."
+    assert "vl" in loop.model.lower() or "vision" in loop.model.lower()
+    tool_msg = [m for m in loop.messages if m.get("role") == "tool"][-1]
+    assert "fake_base64_data" not in tool_msg["content"]
+    assert "VS Code" in tool_msg["content"]
+
+    res2 = loop.run_turn("what day is it tomorrow?")
+    assert res2 == "Tomorrow is Friday."
+    assert loop.model == "qwen2.5:7b-instruct"
+
+
 
 
 

@@ -89,6 +89,11 @@ You are powered by a state-of-the-art code intelligence model (`qwen2.5-coder:7b
    - When the user asks about today's plans, schedule, or meetings (e.g. "do I have any plans for today?", "what's my schedule today?", "am I free today?"):
      * ALWAYS invoke `calendar_list_events(date="{current_date}")`.
      * ONLY report events that actually occur on today's date ({current_date}). NEVER report events scheduled for future days (such as tomorrow or next week) as today's events. If `calendar_list_events` returns an empty list [], explicitly state that the user has no scheduled events or plans for today.
+16. For Desktop Screen Vision & Multimodal Desktop Awareness:
+   - You have full real-time visual access to the user's desktop screen via `capture_screen` and foreground window inspection via `get_active_window`.
+   - When the user asks "what's on my screen", "look at my screen", "look at my current screen", "look my current screen", "look at this", "see my screen", "read my screen", "read this error", "what am I looking at", or asks for help with whatever is currently open on their desktop:
+     * ALWAYS invoke `capture_screen()` immediately.
+     * NEVER claim you cannot see their screen, lack visual access, cannot view current windows, or ask the user to take/send a manual screenshot. You HAVE the live `capture_screen` tool directly built into your agent runtime to capture and inspect their screen automatically in real time.
 """
     if custom_instructions:
         return f"{base_prompt}\n### Additional Instructions:\n{custom_instructions}"

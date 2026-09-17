@@ -79,6 +79,11 @@ def test_intent_routing_screen_and_vision():
     queries = [
         "what is on my screen right now?",
         "look at my screen and tell me what you see",
+        "look my current screen",
+        "look at my current screen",
+        "can you see my screen",
+        "check my screen",
+        "what's on my current screen",
         "can you see my monitor display?",
         "read the error on my screen",
         "inspect active window",
